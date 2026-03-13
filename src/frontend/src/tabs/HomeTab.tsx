@@ -14,7 +14,6 @@ import {
   Brain,
   Clock,
   HardDrive,
-  Inbox,
   ScanLine,
   Send,
   Share2,
@@ -29,7 +28,6 @@ import {
   formatTimestamp,
 } from "../components/FileIcon";
 import { RadarScanner } from "../components/RadarScanner";
-import { ReceiveDialog } from "../components/ReceiveDialog";
 import { SendDialog } from "../components/SendDialog";
 import { UploadDialog } from "../components/UploadDialog";
 import {
@@ -69,7 +67,6 @@ export function HomeTab() {
   const [deleteTarget, setDeleteTarget] = useState<LocalFileMetadata | null>(
     null,
   );
-  const [receiveOpen, setReceiveOpen] = useState(false);
 
   const { data: files = [], isLoading: filesLoading } = useGetMyFiles();
   const { data: devices = [], isLoading: devicesLoading } =
@@ -151,36 +148,20 @@ export function HomeTab() {
           <RadarScanner dots={radarDots} size={220} />
         )}
 
-        <div className="w-full flex gap-3">
-          <Button
-            size="lg"
-            className="flex-1 font-semibold rounded-2xl h-12 text-base"
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
-              color: "oklch(0.08 0.015 260)",
-              boxShadow: "0 4px 24px oklch(0.82 0.15 195 / 0.35)",
-            }}
-            onClick={() => setUploadOpen(true)}
-            data-ocid="home.primary_button"
-          >
-            <Send size={18} className="mr-2" /> Send
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            className="flex-1 font-semibold rounded-2xl h-12 text-base"
-            style={{
-              borderColor: "oklch(0.65 0.2 295 / 0.5)",
-              color: "oklch(0.75 0.15 295)",
-              background: "oklch(0.65 0.2 295 / 0.08)",
-            }}
-            onClick={() => setReceiveOpen(true)}
-            data-ocid="home.secondary_button"
-          >
-            <Inbox size={18} className="mr-2" /> Receive
-          </Button>
-        </div>
+        <Button
+          size="lg"
+          className="w-full font-semibold rounded-2xl h-12 text-base"
+          style={{
+            background:
+              "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
+            color: "oklch(0.08 0.015 260)",
+            boxShadow: "0 4px 24px oklch(0.82 0.15 195 / 0.35)",
+          }}
+          onClick={() => setUploadOpen(true)}
+          data-ocid="home.primary_button"
+        >
+          <Send size={18} className="mr-2" /> Send
+        </Button>
       </motion.div>
 
       <motion.div
@@ -319,7 +300,6 @@ export function HomeTab() {
         file={sendFile}
         onClose={() => setSendFile(null)}
       />
-      <ReceiveDialog open={receiveOpen} onClose={() => setReceiveOpen(false)} />
 
       <AlertDialog
         open={!!deleteTarget}

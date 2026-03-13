@@ -7,11 +7,10 @@ import {
   Plus,
   RefreshCw,
   Send,
-  Wifi,
   WifiOff,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { DeviceSendDialog } from "../components/DeviceSendDialog";
 import { RadarScanner } from "../components/RadarScanner";
@@ -20,14 +19,6 @@ import {
   useConnectToDevice,
   useGetNearbyDevices,
 } from "../hooks/useLocalFiles";
-
-const SEED_DEVICES = [
-  "Galaxy S25",
-  "MacBook Pro",
-  "iPhone 16",
-  "Pixel 9",
-  "iPad Air",
-];
 
 interface BluetoothDeviceLocal {
   name: string;
@@ -51,30 +42,22 @@ export function DevicesTab() {
   const addDevice = useAddNearbyDevice();
   const connectDevice = useConnectToDevice();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally omit mutate fn
-  useEffect(() => {
-    if (!isLoading && devices.length === 0) {
-      const shuffled = [...SEED_DEVICES]
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 3);
-      for (const name of shuffled) addDevice.mutate(name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, devices.length]);
+  // Show manually added devices that aren't from bluetooth
+  const manualDevices = devices
+    .filter((d) => !bluetoothDevices.some((b) => b.name === d.name))
+    .map((d) => ({ name: d.name, isConnected: d.isConnected, real: false }));
 
-  const allDevices = [
-    ...devices.map((d) => ({
-      name: d.name,
-      isConnected: d.isConnected,
-      real: false,
+  const displayDevices = [
+    ...bluetoothDevices.map((b) => ({
+      name: b.name,
+      isConnected: devices.find((d) => d.name === b.name)?.isConnected ?? false,
+      real: true,
     })),
-    ...bluetoothDevices
-      .filter((b) => !devices.some((d) => d.name === b.name))
-      .map((b) => ({ name: b.name, isConnected: false, real: true })),
+    ...manualDevices,
   ];
 
-  const radarDots = allDevices.slice(0, 6).map((d, i) => {
-    const angle = (i / Math.max(allDevices.length, 1)) * 2 * Math.PI + 0.3;
+  const radarDots = displayDevices.slice(0, 6).map((d, i) => {
+    const angle = (i / Math.max(displayDevices.length, 1)) * 2 * Math.PI + 0.3;
     const dist = 0.38 + (i % 3) * 0.18;
     return {
       x: Math.cos(angle) * dist,
@@ -168,7 +151,7 @@ export function DevicesTab() {
         <div>
           <h2 className="font-display font-bold text-xl">Nearby Devices</h2>
           <p className="text-xs text-muted-foreground">
-            {allDevices.length} devices detected
+            {displayDevices.length} devices detected
           </p>
         </div>
         <div className="flex gap-2">
@@ -267,7 +250,7 @@ export function DevicesTab() {
         </p>
       </motion.div>
 
-      {allDevices.length === 0 && !isLoading ? (
+      {displayDevices.length === 0 && !isLoading ? (
         <div
           className="glass rounded-2xl p-8 text-center"
           data-ocid="devices.empty_state"
@@ -275,7 +258,7 @@ export function DevicesTab() {
           <WifiOff size={32} className="text-muted-foreground mx-auto mb-3" />
           <p className="text-sm font-medium">No devices found</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Make sure other devices have OFS open
+            Tap Bluetooth to scan for real nearby devices
           </p>
         </div>
       ) : (
@@ -284,7 +267,7 @@ export function DevicesTab() {
             Discovered Devices
           </p>
           <AnimatePresence>
-            {allDevices.map((device, i) => (
+            {displayDevices.map((device, i) => (
               <motion.div
                 key={device.name}
                 className="glass rounded-xl p-4 flex items-center gap-3"
@@ -308,7 +291,7 @@ export function DevicesTab() {
                   ) : device.real ? (
                     <Bluetooth size={18} className="text-blue-400" />
                   ) : (
-                    <Wifi size={18} className="text-primary" />
+                    <Send size={18} className="text-primary" />
                   )}
                 </div>
                 <div className="flex-1">
