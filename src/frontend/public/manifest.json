@@ -1,0 +1,18 @@
+{
+  "name": "OFS - File Sharing",
+  "short_name": "OFS",
+  "description": "Fast, AI-powered file sharing app",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080d1a",
+  "theme_color": "#080d1a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/generated/ofs-pwa-icon.dim_512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
