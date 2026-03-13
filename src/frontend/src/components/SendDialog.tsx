@@ -9,22 +9,25 @@ import { CheckCircle, ChevronRight, Send, Wifi, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Variant_completed_failed } from "../backend";
-import type { FileMetadata } from "../backend";
-import { useAddTransferRecord, useGetNearbyDevices } from "../hooks/useQueries";
+import {
+  useAddTransferRecord,
+  useGetNearbyDevices,
+} from "../hooks/useLocalFiles";
+import type { LocalFileMetadata } from "../utils/localFileStore";
 import { FileIcon, formatFileSize } from "./FileIcon";
 
 type Step = "select-device" | "transferring" | "done";
 
 interface SendDialogProps {
   open: boolean;
-  file: FileMetadata | null;
+  file: LocalFileMetadata | null;
   onClose: () => void;
 }
 
 export function SendDialog({ open, file, onClose }: SendDialogProps) {
   const [step, setStep] = useState<Step>("select-device");
   const [progress, setProgress] = useState(0);
+  const [speed, setSpeed] = useState(0);
   const [success, setSuccess] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState("");
 
@@ -34,6 +37,7 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
   function handleClose() {
     setStep("select-device");
     setProgress(0);
+    setSpeed(0);
     setSuccess(false);
     setSelectedDevice("");
     onClose();
@@ -47,6 +51,7 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
     let pct = 0;
     const interval = setInterval(() => {
       pct += Math.random() * 12 + 5;
+      setSpeed(Math.random() * 4 + 1);
       if (pct >= 100) {
         pct = 100;
         clearInterval(interval);
@@ -54,18 +59,14 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
         const ok = Math.random() > 0.15;
         setSuccess(ok);
         setStep("done");
-
         if (file) {
           addRecord.mutate({
             receiver: device,
             fileName: file.fileName,
             fileSize: file.fileSize,
-            status: ok
-              ? Variant_completed_failed.completed
-              : Variant_completed_failed.failed,
+            status: ok ? "completed" : "failed",
           });
         }
-
         if (ok) toast.success(`Sent to ${device} successfully!`);
         else toast.error(`Transfer to ${device} failed.`);
       } else {
@@ -91,7 +92,6 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
           </DialogTitle>
         </DialogHeader>
 
-        {/* File info */}
         <div className="glass rounded-xl p-3 flex items-center gap-3">
           <FileIcon fileType={file.fileType} size={18} />
           <div className="flex-1 min-w-0">
@@ -182,6 +182,9 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
                   style={{ width: `${progress}%` }}
                 />
               </div>
+              <p className="text-center text-xs text-muted-foreground">
+                {speed.toFixed(1)} MB/s
+              </p>
               <div className="flex justify-center">
                 <div className="flex gap-1">
                   {[0, 1, 2, 3].map((i) => (

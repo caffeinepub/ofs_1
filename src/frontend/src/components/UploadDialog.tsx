@@ -24,7 +24,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useUploadFile } from "../hooks/useQueries";
+import { useUploadFile } from "../hooks/useLocalFiles";
 import type { FileRecognition, ImageAnalysis } from "../utils/aiAnalysis";
 import { analyzeImage, recognizeFile } from "../utils/aiAnalysis";
 import { FileIcon, formatFileSize } from "./FileIcon";
@@ -95,7 +95,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
       : selectedFile.size
     : 0;
 
-  // Run AI analysis when file is selected
   useEffect(() => {
     if (!selectedFile) {
       setRecognition(null);
@@ -134,7 +133,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
     if (file) setSelectedFile(file);
   };
 
-  async function compressImage(file: File): Promise<Uint8Array<ArrayBuffer>> {
+  async function compressImage(file: File): Promise<Uint8Array> {
     return new Promise((resolve) => {
       const canvas = document.createElement("canvas");
       const img = new Image();
@@ -159,9 +158,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
         canvas.toBlob(
           (blob) => {
             URL.revokeObjectURL(url);
-            blob!
-              .arrayBuffer()
-              .then((ab) => resolve(new Uint8Array(ab as ArrayBuffer)));
+            blob!.arrayBuffer().then((ab) => resolve(new Uint8Array(ab)));
           },
           "image/jpeg",
           0.75,
@@ -176,12 +173,12 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
     setUploading(true);
     setProgress(0);
     try {
-      let data: Uint8Array<ArrayBuffer>;
+      let data: Uint8Array;
       if (compress && selectedFile.type.startsWith("image/")) {
         data = await compressImage(selectedFile);
       } else {
         const ab = await selectedFile.arrayBuffer();
-        data = new Uint8Array(ab as ArrayBuffer);
+        data = new Uint8Array(ab);
       }
       await uploadFile.mutateAsync({
         fileName: selectedFile.name,
@@ -274,7 +271,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
           </button>
         ) : (
           <div className="space-y-3">
-            {/* File preview */}
             <div className="glass rounded-xl p-4 flex items-center gap-3">
               <FileIcon fileType={selectedFile.type} size={20} />
               <div className="flex-1 min-w-0">
@@ -301,7 +297,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
               )}
             </div>
 
-            {/* AI Recognition Panel */}
             <AnimatePresence mode="wait">
               {analyzing ? (
                 <motion.div
@@ -365,7 +360,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                       ))}
                     </motion.div>
                   </div>
-                  {/* Scanning line animation */}
                   <div
                     className="relative h-1 overflow-hidden"
                     style={{ background: "oklch(0.15 0.02 260)" }}
@@ -399,7 +393,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                   }}
                   data-ocid="upload.ai_panel"
                 >
-                  {/* Header row */}
                   <div className="flex items-center gap-2 px-4 pt-3 pb-2">
                     <div
                       className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -422,8 +415,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                       {recognition.category}
                     </Badge>
                   </div>
-
-                  {/* Tags */}
                   <div className="flex flex-wrap gap-1 px-4 pb-2">
                     {recognition.tags.map((tag) => (
                       <span
@@ -438,8 +429,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                       </span>
                     ))}
                   </div>
-
-                  {/* Image analysis */}
                   {imageAnalysis && (
                     <>
                       <div
@@ -460,7 +449,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                             compression possible
                           </p>
                         </div>
-                        {/* Color swatches */}
                         <div className="flex items-center gap-1">
                           {imageAnalysis.dominantColors
                             .slice(0, 4)
@@ -480,7 +468,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
               ) : null}
             </AnimatePresence>
 
-            {/* Compress toggle (images only) */}
             {selectedFile.type.startsWith("image/") && (
               <div className="flex items-center justify-between glass rounded-xl px-4 py-3">
                 <div className="flex items-center gap-2">
@@ -502,7 +489,6 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
               </div>
             )}
 
-            {/* Progress */}
             {uploading && (
               <div className="space-y-2" data-ocid="upload.loading_state">
                 <div className="flex justify-between text-xs text-muted-foreground">
@@ -511,14 +497,15 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                 </div>
                 <div className="relative h-2 rounded-full overflow-hidden bg-muted">
                   <div
-                    className={`h-full rounded-full transition-all duration-300 ${done ? "bg-emerald-400" : "shimmer-bar"}`}
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      done ? "bg-emerald-400" : "shimmer-bar"
+                    }`}
                     style={{ width: `${progress}%` }}
                   />
                 </div>
               </div>
             )}
 
-            {/* Upload button */}
             {!uploading && (
               <Button
                 className="w-full font-semibold"

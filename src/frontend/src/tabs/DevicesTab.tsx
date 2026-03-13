@@ -19,7 +19,7 @@ import {
   useAddNearbyDevice,
   useConnectToDevice,
   useGetNearbyDevices,
-} from "../hooks/useQueries";
+} from "../hooks/useLocalFiles";
 
 const SEED_DEVICES = [
   "Galaxy S25",
@@ -29,7 +29,7 @@ const SEED_DEVICES = [
   "iPad Air",
 ];
 
-interface BluetoothDevice {
+interface BluetoothDeviceLocal {
   name: string;
   real: boolean;
 }
@@ -38,9 +38,9 @@ export function DevicesTab() {
   const [customName, setCustomName] = useState("");
   const [connecting, setConnecting] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [bluetoothDevices, setBluetoothDevices] = useState<BluetoothDevice[]>(
-    [],
-  );
+  const [bluetoothDevices, setBluetoothDevices] = useState<
+    BluetoothDeviceLocal[]
+  >([]);
   const [btScanning, setBtScanning] = useState(false);
   const [btSupported] = useState(
     () => typeof navigator !== "undefined" && "bluetooth" in navigator,
@@ -57,9 +57,7 @@ export function DevicesTab() {
       const shuffled = [...SEED_DEVICES]
         .sort(() => Math.random() - 0.5)
         .slice(0, 3);
-      for (const name of shuffled) {
-        addDevice.mutate(name);
-      }
+      for (const name of shuffled) addDevice.mutate(name);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, devices.length]);
@@ -99,10 +97,6 @@ export function DevicesTab() {
     }
   }
 
-  function handleRadarDotClick(name: string) {
-    setSendTarget(name);
-  }
-
   async function handleScan() {
     setScanning(true);
     await refetch();
@@ -118,13 +112,17 @@ export function DevicesTab() {
     }
     setBtScanning(true);
     try {
-      const bt = navigator as any;
+      const bt = navigator as unknown as {
+        bluetooth: {
+          requestDevice: (opts: unknown) => Promise<{ name?: string }>;
+        };
+      };
       const device = await bt.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [],
       });
       if (device?.name) {
-        const name = device.name as string;
+        const name = device.name;
         setBluetoothDevices((prev) =>
           prev.some((d) => d.name === name)
             ? prev
@@ -166,7 +164,6 @@ export function DevicesTab() {
 
   return (
     <div className="tab-content space-y-5 pb-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-display font-bold text-xl">Nearby Devices</h2>
@@ -212,7 +209,6 @@ export function DevicesTab() {
         </div>
       </div>
 
-      {/* Bluetooth info banner */}
       {btSupported && (
         <motion.div
           initial={{ opacity: 0, y: -6 }}
@@ -246,7 +242,6 @@ export function DevicesTab() {
         </motion.div>
       )}
 
-      {/* Radar */}
       <motion.div
         className="glass rounded-3xl p-5 flex flex-col items-center gap-4"
         initial={{ opacity: 0, scale: 0.97 }}
@@ -264,7 +259,7 @@ export function DevicesTab() {
           <RadarScanner
             dots={radarDots}
             size={260}
-            onDotClick={handleRadarDotClick}
+            onDotClick={(name) => setSendTarget(name)}
           />
         )}
         <p className="text-xs text-muted-foreground">
@@ -272,7 +267,6 @@ export function DevicesTab() {
         </p>
       </motion.div>
 
-      {/* Device List */}
       {allDevices.length === 0 && !isLoading ? (
         <div
           className="glass rounded-2xl p-8 text-center"
@@ -335,7 +329,6 @@ export function DevicesTab() {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  {/* Send file button */}
                   <Button
                     size="sm"
                     className="rounded-lg text-xs gap-1 font-semibold"
@@ -379,7 +372,6 @@ export function DevicesTab() {
         </div>
       )}
 
-      {/* Add custom device */}
       <div className="glass rounded-2xl p-4 space-y-3">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Add Device Manually
@@ -410,7 +402,6 @@ export function DevicesTab() {
         </div>
       </div>
 
-      {/* Send file to device dialog */}
       <DeviceSendDialog
         open={!!sendTarget}
         deviceName={sendTarget ?? ""}

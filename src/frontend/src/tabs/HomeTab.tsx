@@ -1,9 +1,20 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Brain,
   Clock,
   HardDrive,
+  Inbox,
   ScanLine,
   Send,
   Share2,
@@ -11,24 +22,22 @@ import {
   Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
-import type { FileMetadata } from "../backend";
+import { useState } from "react";
 import {
   FileIcon,
   formatFileSize,
   formatTimestamp,
 } from "../components/FileIcon";
 import { RadarScanner } from "../components/RadarScanner";
+import { ReceiveDialog } from "../components/ReceiveDialog";
 import { SendDialog } from "../components/SendDialog";
 import { UploadDialog } from "../components/UploadDialog";
 import {
-  useAddNearbyDevice,
   useDeleteFile,
   useGetMyFiles,
   useGetNearbyDevices,
-} from "../hooks/useQueries";
-
-const SEED_DEVICES = ["Galaxy S25", "MacBook Pro", "iPhone 16", "Pixel 9"];
+} from "../hooks/useLocalFiles";
+import type { LocalFileMetadata } from "../utils/localFileStore";
 
 const AI_FEATURES = [
   {
@@ -56,27 +65,16 @@ const AI_FEATURES = [
 
 export function HomeTab() {
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [sendFile, setSendFile] = useState<FileMetadata | null>(null);
+  const [sendFile, setSendFile] = useState<LocalFileMetadata | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LocalFileMetadata | null>(
+    null,
+  );
+  const [receiveOpen, setReceiveOpen] = useState(false);
 
   const { data: files = [], isLoading: filesLoading } = useGetMyFiles();
   const { data: devices = [], isLoading: devicesLoading } =
     useGetNearbyDevices();
-  const addDevice = useAddNearbyDevice();
   const deleteFile = useDeleteFile();
-
-  // Seed devices if empty
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally omit mutate fn
-  useEffect(() => {
-    if (!devicesLoading && devices.length === 0) {
-      const shuffled = [...SEED_DEVICES]
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 3);
-      for (const name of shuffled) {
-        addDevice.mutate(name);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [devicesLoading, devices.length]);
 
   const recentFiles = files.slice(0, 4);
 
@@ -95,7 +93,6 @@ export function HomeTab() {
 
   return (
     <div className="tab-content space-y-5 pb-4">
-      {/* Header stats */}
       <div className="grid grid-cols-2 gap-3">
         <motion.div
           className="glass rounded-2xl p-4"
@@ -132,7 +129,6 @@ export function HomeTab() {
         </motion.div>
       </div>
 
-      {/* Radar + Send button */}
       <motion.div
         className="glass rounded-3xl p-5 flex flex-col items-center gap-4"
         initial={{ opacity: 0, scale: 0.97 }}
@@ -155,24 +151,38 @@ export function HomeTab() {
           <RadarScanner dots={radarDots} size={220} />
         )}
 
-        <Button
-          size="lg"
-          className="w-full font-semibold rounded-2xl h-12 text-base"
-          style={{
-            background:
-              "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
-            color: "oklch(0.08 0.015 260)",
-            boxShadow: "0 4px 24px oklch(0.82 0.15 195 / 0.35)",
-          }}
-          onClick={() => setUploadOpen(true)}
-          data-ocid="home.primary_button"
-        >
-          <Send size={18} className="mr-2" />
-          Send File
-        </Button>
+        <div className="w-full flex gap-3">
+          <Button
+            size="lg"
+            className="flex-1 font-semibold rounded-2xl h-12 text-base"
+            style={{
+              background:
+                "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
+              color: "oklch(0.08 0.015 260)",
+              boxShadow: "0 4px 24px oklch(0.82 0.15 195 / 0.35)",
+            }}
+            onClick={() => setUploadOpen(true)}
+            data-ocid="home.primary_button"
+          >
+            <Send size={18} className="mr-2" /> Send
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            className="flex-1 font-semibold rounded-2xl h-12 text-base"
+            style={{
+              borderColor: "oklch(0.65 0.2 295 / 0.5)",
+              color: "oklch(0.75 0.15 295)",
+              background: "oklch(0.65 0.2 295 / 0.08)",
+            }}
+            onClick={() => setReceiveOpen(true)}
+            data-ocid="home.secondary_button"
+          >
+            <Inbox size={18} className="mr-2" /> Receive
+          </Button>
+        </div>
       </motion.div>
 
-      {/* AI Features */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -192,28 +202,20 @@ export function HomeTab() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 + i * 0.07 }}
-              style={{
-                border: `1px solid ${feat.color}33`,
-              }}
+              style={{ border: `1px solid ${feat.color}33` }}
             >
-              {/* Glow bg */}
               <div
                 className="absolute inset-0 pointer-events-none"
                 style={{
                   background: `radial-gradient(circle at 30% 30%, ${feat.glow}, transparent 70%)`,
                 }}
               />
-              {/* Icon */}
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{
-                  background: `${feat.color}18`,
-                  color: feat.color,
-                }}
+                style={{ background: `${feat.color}18`, color: feat.color }}
               >
                 <feat.icon size={16} />
               </div>
-              {/* Text */}
               <div>
                 <p className="text-[11px] font-bold text-foreground leading-tight mb-1">
                   {feat.title}
@@ -222,7 +224,6 @@ export function HomeTab() {
                   {feat.desc}
                 </p>
               </div>
-              {/* Animated indicator */}
               <motion.div
                 className="w-1.5 h-1.5 rounded-full absolute top-3 right-3"
                 style={{ background: feat.color }}
@@ -238,7 +239,6 @@ export function HomeTab() {
         </div>
       </motion.div>
 
-      {/* Recent Files */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -268,7 +268,7 @@ export function HomeTab() {
           <div className="space-y-2">
             {recentFiles.map((file, i) => (
               <motion.div
-                key={file.blobId.getDirectURL()}
+                key={file.id}
                 className="glass file-card rounded-xl p-3 flex items-center gap-3"
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -286,7 +286,7 @@ export function HomeTab() {
                       {file.fileName}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formatFileSize(file.fileSize)} ·{" "}
+                      {formatFileSize(Number(file.fileSize))} ·{" "}
                       {formatTimestamp(file.uploadedAt)}
                     </p>
                   </div>
@@ -300,7 +300,7 @@ export function HomeTab() {
                   className="p-1.5 rounded-lg flex-shrink-0 text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteFile.mutate(file.id);
+                    setDeleteTarget(file);
                   }}
                   data-ocid={`home.delete_button.${i + 1}`}
                   aria-label="Delete file"
@@ -319,6 +319,45 @@ export function HomeTab() {
         file={sendFile}
         onClose={() => setSendFile(null)}
       />
+      <ReceiveDialog open={receiveOpen} onClose={() => setReceiveOpen(false)} />
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+      >
+        <AlertDialogContent data-ocid="home.delete_confirm.dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-foreground">
+                {deleteTarget?.fileName}
+              </span>
+              ? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setDeleteTarget(null)}
+              data-ocid="home.delete_confirm.cancel_button"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTarget) {
+                  deleteFile.mutate(deleteTarget.id);
+                  setDeleteTarget(null);
+                }
+              }}
+              data-ocid="home.delete_confirm.confirm_button"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

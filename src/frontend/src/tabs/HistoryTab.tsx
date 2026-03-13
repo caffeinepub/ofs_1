@@ -1,31 +1,23 @@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  CheckCircle,
-  Clock,
-  XCircle,
-} from "lucide-react";
+import { ArrowUpRight, CheckCircle, Clock, XCircle } from "lucide-react";
 import { motion } from "motion/react";
-import { Variant_completed_failed } from "../backend";
 import {
   FileIcon,
   formatFileSize,
   formatTimestamp,
 } from "../components/FileIcon";
-import { useInternetIdentity } from "../hooks/useInternetIdentity";
-import { useGetTransferHistory } from "../hooks/useQueries";
+import { useGetTransferHistory } from "../hooks/useLocalFiles";
 
 export function HistoryTab() {
   const { data: history = [], isLoading } = useGetTransferHistory();
-  const { identity } = useInternetIdentity();
-  const myPrincipal = identity?.getPrincipal().toString();
+
+  const completedCount = history.filter((h) => h.status === "completed").length;
+  const failedCount = history.filter((h) => h.status === "failed").length;
 
   return (
     <div className="tab-content space-y-4 pb-4">
-      {/* Header */}
       <div>
         <h2 className="font-display font-bold text-xl">Transfer History</h2>
         <p className="text-xs text-muted-foreground">
@@ -33,33 +25,23 @@ export function HistoryTab() {
         </p>
       </div>
 
-      {/* Stats */}
       {history.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
           <div className="glass rounded-xl p-3">
             <p className="text-2xl font-display font-bold text-emerald-400">
-              {
-                history.filter(
-                  (h) => h.status === Variant_completed_failed.completed,
-                ).length
-              }
+              {completedCount}
             </p>
             <p className="text-xs text-muted-foreground">Completed</p>
           </div>
           <div className="glass rounded-xl p-3">
             <p className="text-2xl font-display font-bold text-destructive">
-              {
-                history.filter(
-                  (h) => h.status === Variant_completed_failed.failed,
-                ).length
-              }
+              {failedCount}
             </p>
             <p className="text-xs text-muted-foreground">Failed</p>
           </div>
         </div>
       )}
 
-      {/* History list */}
       {isLoading ? (
         <div className="space-y-2" data-ocid="history.loading_state">
           {[0, 1, 2, 3, 4].map((n) => (
@@ -86,9 +68,7 @@ export function HistoryTab() {
         <ScrollArea className="h-[calc(100dvh-280px)]">
           <div className="space-y-2 pr-1">
             {history.map((record, i) => {
-              const isSender = record.sender.toString() === myPrincipal;
-              const isCompleted =
-                record.status === Variant_completed_failed.completed;
+              const isCompleted = record.status === "completed";
               return (
                 <motion.div
                   key={
@@ -103,7 +83,6 @@ export function HistoryTab() {
                   data-ocid={`history.item.${i + 1}`}
                 >
                   <FileIcon fileType="" size={16} />
-
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold truncate">
@@ -138,21 +117,12 @@ export function HistoryTab() {
                       {formatFileSize(record.fileSize)}
                     </p>
                     <div className="flex items-center gap-1 mt-1">
-                      {isSender ? (
-                        <ArrowUpRight
-                          size={11}
-                          className="text-primary flex-shrink-0"
-                        />
-                      ) : (
-                        <ArrowDownLeft
-                          size={11}
-                          className="text-secondary flex-shrink-0"
-                        />
-                      )}
+                      <ArrowUpRight
+                        size={11}
+                        className="text-primary flex-shrink-0"
+                      />
                       <p className="text-[11px] text-muted-foreground truncate">
-                        {isSender
-                          ? `To: ${record.receiver}`
-                          : `From: ${record.sender.toString().slice(0, 12)}…`}
+                        To: {record.receiver}
                       </p>
                     </div>
                     <p className="text-[10px] text-muted-foreground/70 mt-0.5">

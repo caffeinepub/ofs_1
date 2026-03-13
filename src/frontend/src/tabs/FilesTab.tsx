@@ -16,8 +16,6 @@ import { Grid3X3, List, Search, Send, Trash2, Upload } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { ExternalBlob } from "../backend";
-import type { FileMetadata } from "../backend";
 import {
   FileIcon,
   formatFileSize,
@@ -25,8 +23,9 @@ import {
 } from "../components/FileIcon";
 import { SendDialog } from "../components/SendDialog";
 import { UploadDialog } from "../components/UploadDialog";
-import { useDeleteFile, useGetMyFiles } from "../hooks/useQueries";
+import { useDeleteFile, useGetMyFiles } from "../hooks/useLocalFiles";
 import { recognizeFile } from "../utils/aiAnalysis";
+import type { LocalFileMetadata } from "../utils/localFileStore";
 
 function categoryBadgeStyle(category: string): { bg: string; text: string } {
   switch (category) {
@@ -85,7 +84,7 @@ function FileCategoryBadge({
 
 export function FilesTab() {
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [sendFile, setSendFile] = useState<FileMetadata | null>(null);
+  const [sendFile, setSendFile] = useState<LocalFileMetadata | null>(null);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
 
@@ -96,7 +95,7 @@ export function FilesTab() {
     f.fileName.toLowerCase().includes(search.toLowerCase()),
   );
 
-  async function handleDelete(id: ExternalBlob) {
+  async function handleDelete(id: string) {
     try {
       await deleteFile.mutateAsync(id);
       toast.success("File deleted");
@@ -107,7 +106,6 @@ export function FilesTab() {
 
   return (
     <div className="tab-content space-y-4 pb-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-display font-bold text-xl">My Files</h2>
@@ -131,7 +129,6 @@ export function FilesTab() {
         </Button>
       </div>
 
-      {/* Search + view toggle */}
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search
@@ -149,11 +146,7 @@ export function FilesTab() {
         <div className="glass rounded-xl flex overflow-hidden border border-border/40">
           <button
             type="button"
-            className={`px-3 py-2 transition-colors ${
-              view === "list"
-                ? "bg-primary/20 text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            className={`px-3 py-2 transition-colors ${view === "list" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
             onClick={() => setView("list")}
             data-ocid="files.tab"
           >
@@ -161,11 +154,7 @@ export function FilesTab() {
           </button>
           <button
             type="button"
-            className={`px-3 py-2 transition-colors ${
-              view === "grid"
-                ? "bg-primary/20 text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            className={`px-3 py-2 transition-colors ${view === "grid" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
             onClick={() => setView("grid")}
             data-ocid="files.tab"
           >
@@ -174,7 +163,6 @@ export function FilesTab() {
         </div>
       </div>
 
-      {/* File list */}
       {isLoading ? (
         <div className="space-y-2" data-ocid="files.loading_state">
           {[0, 1, 2, 3].map((i) => (
@@ -214,7 +202,7 @@ export function FilesTab() {
           <div className="space-y-2">
             {filtered.map((file, i) => (
               <motion.div
-                key={file.blobId.getDirectURL()}
+                key={file.id}
                 className="glass file-card rounded-xl p-3 flex items-center gap-3"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -234,7 +222,7 @@ export function FilesTab() {
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {formatFileSize(file.fileSize)} ·{" "}
+                    {formatFileSize(Number(file.fileSize))} ·{" "}
                     {formatTimestamp(file.uploadedAt)}
                   </p>
                 </div>
@@ -293,7 +281,7 @@ export function FilesTab() {
         <div className="grid grid-cols-2 gap-2">
           {filtered.map((file, i) => (
             <motion.div
-              key={file.blobId.getDirectURL()}
+              key={file.id}
               className="glass file-card rounded-xl p-3 flex flex-col gap-2"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -309,7 +297,7 @@ export function FilesTab() {
               </div>
               <p className="text-xs font-medium truncate">{file.fileName}</p>
               <p className="text-[10px] text-muted-foreground">
-                {formatFileSize(file.fileSize)}
+                {formatFileSize(Number(file.fileSize))}
               </p>
               <div className="flex gap-1 mt-auto">
                 <button
@@ -363,7 +351,7 @@ export function FilesTab() {
       <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
       <SendDialog
         open={!!sendFile}
-        file={sendFile}
+        file={sendFile as never}
         onClose={() => setSendFile(null)}
       />
     </div>

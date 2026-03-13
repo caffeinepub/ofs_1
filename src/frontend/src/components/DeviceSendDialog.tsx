@@ -5,12 +5,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Bluetooth, CheckCircle, FileUp, XCircle } from "lucide-react";
+import { Bluetooth, CheckCircle, FileUp, XCircle, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Variant_completed_failed } from "../backend";
-import { useAddTransferRecord, useGetMyFiles } from "../hooks/useQueries";
+import { useAddTransferRecord, useGetMyFiles } from "../hooks/useLocalFiles";
 import { FileIcon, formatFileSize } from "./FileIcon";
 
 type Step = "pick" | "transferring" | "done";
@@ -24,6 +23,7 @@ interface Props {
 export function DeviceSendDialog({ open, deviceName, onClose }: Props) {
   const [step, setStep] = useState<Step>("pick");
   const [progress, setProgress] = useState(0);
+  const [speed, setSpeed] = useState(0);
   const [success, setSuccess] = useState(false);
   const [pickedFile, setPickedFile] = useState<{
     name: string;
@@ -36,6 +36,7 @@ export function DeviceSendDialog({ open, deviceName, onClose }: Props) {
   function handleClose() {
     setStep("pick");
     setProgress(0);
+    setSpeed(0);
     setSuccess(false);
     setPickedFile(null);
     onClose();
@@ -45,25 +46,28 @@ export function DeviceSendDialog({ open, deviceName, onClose }: Props) {
     setPickedFile({ name: fileName, size: fileSize });
     setStep("transferring");
     setProgress(0);
+    setSpeed(0);
     let pct = 0;
     const interval = setInterval(() => {
       pct += Math.random() * 12 + 5;
+      const newSpeed = 1.2 + Math.random() * 5.3;
       if (pct >= 100) {
         pct = 100;
         clearInterval(interval);
         setProgress(100);
-        const ok = true;
-        setSuccess(ok);
+        setSpeed(0);
+        setSuccess(true);
         setStep("done");
         addRecord.mutate({
           receiver: deviceName,
           fileName,
           fileSize: BigInt(fileSize),
-          status: Variant_completed_failed.completed,
+          status: "completed",
         });
         toast.success(`Sent to ${deviceName}!`);
       } else {
         setProgress(pct);
+        setSpeed(newSpeed);
       }
     }, 180);
   }
@@ -99,7 +103,6 @@ export function DeviceSendDialog({ open, deviceName, onClose }: Props) {
               exit={{ opacity: 0, y: -8 }}
               className="space-y-4"
             >
-              {/* Pick from uploaded files */}
               {myFiles.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
@@ -108,7 +111,7 @@ export function DeviceSendDialog({ open, deviceName, onClose }: Props) {
                   <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                     {myFiles.map((file, i) => (
                       <motion.button
-                        key={file.blobId.getDirectURL()}
+                        key={file.id}
                         className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:border-primary/40 transition-colors text-left"
                         style={{
                           border: "1px solid oklch(0.3 0.04 260 / 0.5)",
@@ -134,7 +137,6 @@ export function DeviceSendDialog({ open, deviceName, onClose }: Props) {
                 </div>
               )}
 
-              {/* Or pick from device */}
               <button
                 type="button"
                 className="glass rounded-xl p-4 flex flex-col items-center gap-3 border-dashed border-2 cursor-pointer hover:border-primary/50 transition-colors w-full"
@@ -192,6 +194,22 @@ export function DeviceSendDialog({ open, deviceName, onClose }: Props) {
                   className="h-full rounded-full shimmer-bar transition-all duration-200"
                   style={{ width: `${progress}%` }}
                 />
+              </div>
+              <div className="flex items-center justify-center gap-1.5">
+                <Zap
+                  size={13}
+                  style={{ color: "oklch(0.88 0.2 95)" }}
+                  className="flex-shrink-0"
+                />
+                <motion.span
+                  key={Math.floor(speed * 10)}
+                  className="text-xs font-mono font-semibold"
+                  style={{ color: "oklch(0.88 0.2 95)" }}
+                  initial={{ opacity: 0.6, y: -2 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {speed.toFixed(1)} MB/s
+                </motion.span>
               </div>
               <div className="flex justify-center">
                 <div className="flex gap-1">

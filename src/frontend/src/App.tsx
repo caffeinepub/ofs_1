@@ -1,19 +1,17 @@
-import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Clock, FolderOpen, Home, Send, User, Wifi } from "lucide-react";
+import { Clock, FolderOpen, Home, Smartphone, Wifi } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { useInternetIdentity } from "./hooks/useInternetIdentity";
+import { GetAppDialog } from "./components/GetAppDialog";
 import { DevicesTab } from "./tabs/DevicesTab";
 import { FilesTab } from "./tabs/FilesTab";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { HomeTab } from "./tabs/HomeTab";
-import { ProfileTab } from "./tabs/ProfileTab";
 
 const qc = new QueryClient();
 
-type Tab = "home" | "files" | "devices" | "history" | "profile";
+type Tab = "home" | "files" | "devices" | "history";
 
 const TABS: {
   id: Tab;
@@ -24,162 +22,17 @@ const TABS: {
   { id: "files", label: "Files", Icon: FolderOpen },
   { id: "devices", label: "Devices", Icon: Wifi },
   { id: "history", label: "History", Icon: Clock },
-  { id: "profile", label: "Profile", Icon: User },
 ];
 
-function LoginScreen() {
-  const { login, loginStatus } = useInternetIdentity();
-  const isLoggingIn = loginStatus === "logging-in";
-
-  return (
-    <div className="app-bg min-h-dvh flex flex-col items-center justify-center px-6 text-center">
-      {/* Background decorative elements */}
-      <div
-        className="absolute top-20 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(circle, oklch(0.82 0.15 195 / 0.12) 0%, transparent 70%)",
-          filter: "blur(40px)",
-        }}
-      />
-
-      <motion.div
-        className="relative z-10 flex flex-col items-center gap-8 max-w-xs"
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
-      >
-        {/* Logo */}
-        <motion.div
-          className="relative"
-          animate={{ y: [0, -8, 0] }}
-          transition={{
-            repeat: Number.POSITIVE_INFINITY,
-            duration: 4,
-            ease: "easeInOut",
-          }}
-        >
-          <img
-            src="/assets/generated/ofs-logo-transparent.dim_120x120.png"
-            alt="OFS Logo"
-            className="w-24 h-24"
-            style={{
-              filter: "drop-shadow(0 0 24px oklch(0.82 0.15 195 / 0.6))",
-            }}
-          />
-        </motion.div>
-
-        {/* Title */}
-        <div>
-          <h1 className="font-display font-bold text-5xl tracking-tight gradient-text">
-            OFS
-          </h1>
-          <p className="text-muted-foreground mt-2 text-base">
-            Open File Sharing
-          </p>
-          <p className="text-muted-foreground/70 mt-1 text-sm">
-            Fast · Secure · Anywhere
-          </p>
-        </div>
-
-        {/* Features */}
-        <div className="grid grid-cols-2 gap-3 w-full">
-          {[
-            { emoji: "⚡", text: "Lightning Fast" },
-            { emoji: "🔒", text: "End-to-End Secure" },
-            { emoji: "🤖", text: "AI Compression" },
-            { emoji: "📡", text: "Nearby Devices" },
-          ].map((f) => (
-            <div
-              key={f.text}
-              className="glass rounded-xl p-3 flex items-center gap-2"
-            >
-              <span className="text-base">{f.emoji}</span>
-              <span className="text-xs font-medium text-foreground/80">
-                {f.text}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Login button */}
-        <Button
-          size="lg"
-          className="w-full h-14 rounded-2xl text-base font-semibold"
-          style={{
-            background:
-              "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
-            color: "oklch(0.08 0.015 260)",
-            boxShadow: "0 8px 32px oklch(0.82 0.15 195 / 0.4)",
-          }}
-          onClick={login}
-          disabled={isLoggingIn}
-          data-ocid="login.primary_button"
-        >
-          {isLoggingIn ? (
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-              Connecting...
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Send size={18} />
-              Get Started
-            </span>
-          )}
-        </Button>
-      </motion.div>
-    </div>
-  );
-}
-
 function AppShell() {
-  const { identity, isInitializing } = useInternetIdentity();
   const [activeTab, setActiveTab] = useState<Tab>("home");
-
-  if (isInitializing) {
-    return (
-      <div className="app-bg min-h-dvh flex items-center justify-center">
-        <motion.div
-          className="flex flex-col items-center gap-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <img
-            src="/assets/generated/ofs-logo-transparent.dim_120x120.png"
-            alt="OFS"
-            className="w-16 h-16"
-            style={{
-              filter: "drop-shadow(0 0 16px oklch(0.82 0.15 195 / 0.5))",
-            }}
-          />
-          <div className="flex gap-1">
-            {[0, 1, 2].map((i) => (
-              <motion.div
-                key={i}
-                className="w-2 h-2 rounded-full bg-primary"
-                animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{
-                  repeat: Number.POSITIVE_INFINITY,
-                  duration: 1,
-                  delay: i * 0.2,
-                }}
-              />
-            ))}
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
-  if (!identity) return <LoginScreen />;
+  const [getAppOpen, setGetAppOpen] = useState(false);
 
   const tabContent: Record<Tab, React.ReactNode> = {
     home: <HomeTab />,
     files: <FilesTab />,
     devices: <DevicesTab />,
     history: <HistoryTab />,
-    profile: <ProfileTab />,
   };
 
   return (
@@ -199,15 +52,32 @@ function AppShell() {
             OFS
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <div
-            className="w-2 h-2 rounded-full"
+        <div className="flex items-center gap-3">
+          {/* Get App button */}
+          <button
+            type="button"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
             style={{
-              background: "oklch(0.78 0.18 145)",
-              boxShadow: "0 0 8px oklch(0.78 0.18 145 / 0.8)",
+              background: "oklch(0.82 0.15 195 / 0.12)",
+              border: "1px solid oklch(0.82 0.15 195 / 0.35)",
+              color: "oklch(0.82 0.15 195)",
             }}
-          />
-          <span className="text-xs text-muted-foreground">Online</span>
+            onClick={() => setGetAppOpen(true)}
+            data-ocid="header.get_app.button"
+          >
+            <Smartphone size={13} />
+            Get App
+          </button>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-2 h-2 rounded-full"
+              style={{
+                background: "oklch(0.78 0.18 145)",
+                boxShadow: "0 0 8px oklch(0.78 0.18 145 / 0.8)",
+              }}
+            />
+            <span className="text-xs text-muted-foreground">Online</span>
+          </div>
         </div>
       </header>
 
@@ -292,6 +162,8 @@ function AppShell() {
           })}
         </div>
       </nav>
+
+      <GetAppDialog open={getAppOpen} onClose={() => setGetAppOpen(false)} />
     </div>
   );
 }
