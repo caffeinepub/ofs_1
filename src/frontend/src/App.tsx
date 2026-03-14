@@ -1,17 +1,17 @@
 import { Toaster } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Clock, FolderOpen, Home, Smartphone, Wifi } from "lucide-react";
+import { Clock, Home, QrCode, Smartphone, Wifi } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { GetAppDialog } from "./components/GetAppDialog";
 import { DevicesTab } from "./tabs/DevicesTab";
-import { FilesTab } from "./tabs/FilesTab";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { HomeTab } from "./tabs/HomeTab";
+import { ScannerTab } from "./tabs/ScannerTab";
 
 const qc = new QueryClient();
 
-type Tab = "home" | "files" | "devices" | "history";
+type Tab = "home" | "scanner" | "devices" | "history";
 
 const TABS: {
   id: Tab;
@@ -19,7 +19,7 @@ const TABS: {
   Icon: React.ComponentType<{ size?: number; className?: string }>;
 }[] = [
   { id: "home", label: "Home", Icon: Home },
-  { id: "files", label: "Files", Icon: FolderOpen },
+  { id: "scanner", label: "Scanner", Icon: QrCode },
   { id: "devices", label: "Devices", Icon: Wifi },
   { id: "history", label: "History", Icon: Clock },
 ];
@@ -30,7 +30,7 @@ function AppShell() {
 
   const tabContent: Record<Tab, React.ReactNode> = {
     home: <HomeTab />,
-    files: <FilesTab />,
+    scanner: <ScannerTab />,
     devices: <DevicesTab />,
     history: <HistoryTab />,
   };

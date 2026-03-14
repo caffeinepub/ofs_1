@@ -14,7 +14,6 @@ import {
   X,
 } from "lucide-react";
 import { motion } from "motion/react";
-import QRCode from "qrcode";
 import { useEffect, useRef, useState } from "react";
 
 interface GetAppDialogProps {
@@ -22,9 +21,14 @@ interface GetAppDialogProps {
   onClose: () => void;
 }
 
+/** Minimal QR code data URL generator using Google Charts API (client-side URL only) */
+function getQrUrl(text: string): string {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=${encodeURIComponent(text)}&bgcolor=0a1628&color=7adff0&format=png&margin=4`;
+}
+
 export function GetAppDialog({ open, onClose }: GetAppDialogProps) {
   const [feedback, setFeedback] = useState<Record<string, string>>({});
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
   // biome-ignore lint/suspicious/noExplicitAny: BeforeInstallPromptEvent is not typed
   const deferredPrompt = useRef<any>(null);
   const [installable, setInstallable] = useState(false);
@@ -44,13 +48,7 @@ export function GetAppDialog({ open, onClose }: GetAppDialogProps) {
 
   useEffect(() => {
     if (open) {
-      QRCode.toDataURL(window.location.href, {
-        width: 128,
-        margin: 1,
-        color: { dark: "#0a0f1e", light: "#d4f1f9" },
-      })
-        .then(setQrDataUrl)
-        .catch(() => {});
+      setQrUrl(getQrUrl(window.location.href));
     }
   }, [open]);
 
@@ -238,7 +236,7 @@ export function GetAppDialog({ open, onClose }: GetAppDialogProps) {
                     Share with anyone. They can open it in a browser or scan the
                     QR code.
                   </p>
-                  {qrDataUrl && (
+                  {qrUrl && (
                     <motion.div
                       className="mt-3 flex flex-col items-center gap-1.5"
                       initial={{ opacity: 0, scale: 0.9 }}
@@ -253,7 +251,7 @@ export function GetAppDialog({ open, onClose }: GetAppDialogProps) {
                         }}
                       >
                         <img
-                          src={qrDataUrl}
+                          src={qrUrl}
                           alt="QR code for app link"
                           width={112}
                           height={112}
