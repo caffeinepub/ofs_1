@@ -20,8 +20,8 @@ import {
   Trash2,
   Zap,
 } from "lucide-react";
-import { motion } from "motion/react";
-import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useRef, useState } from "react";
 import {
   FileIcon,
   formatFileSize,
@@ -67,6 +67,10 @@ export function HomeTab() {
   const [deleteTarget, setDeleteTarget] = useState<LocalFileMetadata | null>(
     null,
   );
+  const [longPressFile, setLongPressFile] = useState<LocalFileMetadata | null>(
+    null,
+  );
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: files = [], isLoading: filesLoading } = useGetMyFiles();
   const { data: devices = [], isLoading: devicesLoading } =
@@ -255,6 +259,24 @@ export function HomeTab() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
                 data-ocid={`home.item.${i + 1}`}
+                onPointerDown={() => {
+                  longPressTimer.current = setTimeout(
+                    () => setLongPressFile(file),
+                    500,
+                  );
+                }}
+                onPointerUp={() => {
+                  if (longPressTimer.current)
+                    clearTimeout(longPressTimer.current);
+                }}
+                onPointerLeave={() => {
+                  if (longPressTimer.current)
+                    clearTimeout(longPressTimer.current);
+                }}
+                onPointerMove={() => {
+                  if (longPressTimer.current)
+                    clearTimeout(longPressTimer.current);
+                }}
               >
                 <button
                   type="button"
@@ -338,6 +360,55 @@ export function HomeTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Long-press delete bottom sheet */}
+      <AnimatePresence>
+        {longPressFile && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-end"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setLongPressFile(null)}
+              onKeyDown={(e) => e.key === "Escape" && setLongPressFile(null)}
+              role="button"
+              tabIndex={0}
+            />
+            <motion.div
+              className="relative w-full glass rounded-t-2xl p-6 space-y-3"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            >
+              <p className="text-sm font-medium text-muted-foreground truncate text-center pb-1">
+                {longPressFile.fileName}
+              </p>
+              <button
+                type="button"
+                className="w-full py-3 rounded-xl bg-red-500/20 text-red-400 font-semibold hover:bg-red-500/30 transition-colors"
+                onClick={() => {
+                  setDeleteTarget(longPressFile);
+                  setLongPressFile(null);
+                }}
+                data-ocid="home.delete_button"
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="w-full py-3 rounded-xl bg-white/5 text-muted-foreground font-medium hover:bg-white/10 transition-colors"
+                onClick={() => setLongPressFile(null)}
+                data-ocid="home.cancel_button"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

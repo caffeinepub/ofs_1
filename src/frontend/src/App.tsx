@@ -1,17 +1,18 @@
 import { Toaster } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Clock, Home, QrCode, Smartphone, Wifi } from "lucide-react";
+import { Clock, Home, QrCode, Smartphone, User, Wifi } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { GetAppDialog } from "./components/GetAppDialog";
 import { DevicesTab } from "./tabs/DevicesTab";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { HomeTab } from "./tabs/HomeTab";
+import { ProfileTab } from "./tabs/ProfileTab";
 import { ScannerTab } from "./tabs/ScannerTab";
 
 const qc = new QueryClient();
 
-type Tab = "home" | "scanner" | "devices" | "history";
+type Tab = "home" | "scanner" | "devices" | "history" | "personal";
 
 const TABS: {
   id: Tab;
@@ -22,6 +23,7 @@ const TABS: {
   { id: "scanner", label: "Scanner", Icon: QrCode },
   { id: "devices", label: "Devices", Icon: Wifi },
   { id: "history", label: "History", Icon: Clock },
+  { id: "personal", label: "Personal", Icon: User },
 ];
 
 function AppShell() {
@@ -33,6 +35,7 @@ function AppShell() {
     scanner: <ScannerTab />,
     devices: <DevicesTab />,
     history: <HistoryTab />,
+    personal: <ProfileTab />,
   };
 
   return (
@@ -41,11 +44,17 @@ function AppShell() {
       <header className="safe-top px-5 pt-4 pb-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <img
-            src="/assets/generated/ofs-logo-transparent.dim_120x120.png"
+            src="/assets/uploads/Screenshot_2026-03-13-20-56-15-19_40deb401b9ffe8e1df2f1cc5ba480b12-1.jpg"
             alt="OFS"
-            className="w-8 h-8"
+            className="w-8 h-8 rounded-full object-cover"
             style={{
               filter: "drop-shadow(0 0 8px oklch(0.82 0.15 195 / 0.5))",
+              border: "1.5px solid oklch(0.82 0.15 195 / 0.5)",
+            }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src =
+                "/assets/generated/ofs-logo-transparent.dim_120x120.png";
+              (e.target as HTMLImageElement).onerror = null;
             }}
           />
           <span className="font-display font-bold text-xl gradient-text">

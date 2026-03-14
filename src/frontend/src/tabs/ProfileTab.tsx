@@ -1,12 +1,10 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   Clock,
   Edit2,
   HardDrive,
-  LogOut,
   Save,
   Shield,
   User,
@@ -15,28 +13,20 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { formatFileSize } from "../components/FileIcon";
-import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useGetMyFiles,
   useGetNearbyDevices,
   useGetTransferHistory,
-} from "../hooks/useQueries";
+} from "../hooks/useLocalFiles";
 
 const NAME_KEY = "ofs_display_name";
 
 export function ProfileTab() {
-  const { clear, identity } = useInternetIdentity();
-  const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(
     () => localStorage.getItem(NAME_KEY) || "OFS User",
   );
   const [nameInput, setNameInput] = useState(name);
-
-  const principal = identity?.getPrincipal().toString() ?? "";
-  const shortPrincipal = principal
-    ? `${principal.slice(0, 10)}…${principal.slice(-6)}`
-    : "Anonymous";
 
   const { data: files = [] } = useGetMyFiles();
   const { data: devices = [] } = useGetNearbyDevices();
@@ -52,11 +42,6 @@ export function ProfileTab() {
     localStorage.setItem(NAME_KEY, nameInput.trim() || "OFS User");
     setName(nameInput.trim() || "OFS User");
     setEditing(false);
-  }
-
-  async function handleLogout() {
-    await clear();
-    qc.clear();
   }
 
   const initials = name
@@ -148,13 +133,9 @@ export function ProfileTab() {
           </div>
         )}
 
-        {/* Principal */}
-        <div className="flex items-center gap-2 glass rounded-full px-4 py-1.5">
-          <Shield size={12} className="text-primary" />
-          <span className="text-xs font-mono text-muted-foreground">
-            {shortPrincipal}
-          </span>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Your personal display name for OFS
+        </p>
       </motion.div>
 
       {/* Stats */}
@@ -193,11 +174,11 @@ export function ProfileTab() {
         ))}
       </div>
 
-      {/* Settings section */}
+      {/* Personal Info section */}
       <div className="glass rounded-2xl overflow-hidden">
         <div className="p-4 border-b border-border/30">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Account
+            Personal Info
           </p>
         </div>
         <div className="divide-y divide-border/20">
@@ -211,25 +192,14 @@ export function ProfileTab() {
           <div className="p-4 flex items-center gap-3">
             <Shield size={16} className="text-muted-foreground" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">Principal ID</p>
+              <p className="text-sm font-medium">Device Identity</p>
               <p className="text-xs text-muted-foreground font-mono truncate">
-                {principal || "Not connected"}
+                OFS-{name.replace(/\s+/g, "-").toUpperCase()}
               </p>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Logout */}
-      <Button
-        variant="outline"
-        className="w-full rounded-2xl h-12 border-destructive/40 text-destructive hover:bg-destructive/10 font-semibold gap-2"
-        onClick={handleLogout}
-        data-ocid="profile.button"
-      >
-        <LogOut size={16} />
-        Sign Out
-      </Button>
     </div>
   );
 }

@@ -20,11 +20,56 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useAddReceivedRecord } from "../hooks/useLocalFiles";
 import { useQRScanner } from "../qr-code/useQRScanner";
 
-declare global {
-  interface Window {
-    QRCodeLib: any;
+function parseFileSizeToBytes(sizeStr: string): number {
+  const match = sizeStr.match(/^([\d.]+)\s*(B|KB|MB|GB)?$/i);
+  if (!match) return 0;
+  const val = Number.parseFloat(match[1]);
+  const unit = (match[2] || "B").toUpperCase();
+  const multipliers: Record<string, number> = {
+    B: 1,
+    KB: 1024,
+    MB: 1024 * 1024,
+    GB: 1024 * 1024 * 1024,
+  };
+  return Math.round(val * (multipliers[unit] ?? 1));
+}
+// Module-level PIN store: maps 6-digit PIN -> full OFS code
+const OFS_PIN_KEY = "ofs_pin_store";
+
+function setPinInStore(pin: string, ofsCode: string) {
+  try {
+    const raw = localStorage.getItem(OFS_PIN_KEY);
+    const store: Record<string, string> = raw ? JSON.parse(raw) : {};
+    store[pin] = ofsCode;
+    localStorage.setItem(OFS_PIN_KEY, JSON.stringify(store));
+  } catch {
+    /* ignore */
+  }
+}
+
+function getPinFromStore(pin: string): string | undefined {
+  try {
+    const raw = localStorage.getItem(OFS_PIN_KEY);
+    if (!raw) return undefined;
+    const store: Record<string, string> = JSON.parse(raw);
+    return store[pin];
+  } catch {
+    return undefined;
+  }
+}
+
+function deletePinFromStore(pin: string) {
+  try {
+    const raw = localStorage.getItem(OFS_PIN_KEY);
+    if (!raw) return;
+    const store: Record<string, string> = JSON.parse(raw);
+    delete store[pin];
+    localStorage.setItem(OFS_PIN_KEY, JSON.stringify(store));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -60,57 +105,88 @@ function formatFileSize(bytes: number): string {
 }
 
 // ─── QR Code generator ───────────────────────────────────────────────────────
+// Dynamically load qrcode generator via CDN
+declare global {
+  interface Window {
+    QRCode:
+      | { toDataURL: (text: string, opts: unknown) => Promise<string> }
+      | undefined;
+    qrcodeLoading?: boolean;
+    qrcodeCallbacks?: Array<() => void>;
+  }
+}
+
+function loadQRLib(): Promise<void> {
+  return new Promise((resolve) => {
+    if (window.QRCode) {
+      resolve();
+      return;
+    }
+    if (window.qrcodeLoading) {
+      window.qrcodeCallbacks = window.qrcodeCallbacks || [];
+      window.qrcodeCallbacks.push(resolve);
+      return;
+    }
+    window.qrcodeLoading = true;
+    const script = document.createElement("script");
+    script.src =
+      "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    script.onload = () => {
+      resolve();
+      for (const cb of window.qrcodeCallbacks || []) cb();
+      window.qrcodeCallbacks = [];
+    };
+    document.head.appendChild(script);
+  });
+}
+
+function generateQRDataUrl(text: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const div = document.createElement("div");
+    div.style.visibility = "hidden";
+    div.style.position = "fixed";
+    div.style.top = "-9999px";
+    document.body.appendChild(div);
+    try {
+      const QRLib = window.QRCode as any;
+      const qr = new QRLib(div, {
+        text,
+        width: 220,
+        height: 220,
+        colorDark: "#00e5ff",
+        colorLight: "#0a0f1e",
+        correctLevel: QRLib.CorrectLevel?.H ?? 3,
+      });
+      setTimeout(() => {
+        const canvas = div.querySelector("canvas");
+        const img = div.querySelector("img");
+        if (canvas) {
+          resolve(canvas.toDataURL("image/png"));
+        } else if (img && (img as HTMLImageElement).src) {
+          resolve((img as HTMLImageElement).src);
+        } else {
+          reject(new Error("No canvas/img"));
+        }
+        document.body.removeChild(div);
+        void qr;
+      }, 100);
+    } catch (e) {
+      document.body.removeChild(div);
+      reject(e);
+    }
+  });
+}
+
 function useQRCodeDataUrl(text: string) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!text) return;
     setDataUrl(null);
-
-    const generate = () => {
-      if (window.QRCodeLib) {
-        window.QRCodeLib.toDataURL(
-          text,
-          {
-            width: 220,
-            margin: 2,
-            color: { dark: "#00e5ff", light: "#0a0f1e" },
-          },
-          (err: Error | null, url: string) => {
-            if (!err) setDataUrl(url);
-          },
-        );
-        return;
-      }
-      setDataUrl(
-        `https://quickchart.io/qr?text=${encodeURIComponent(text)}&size=220&dark=00e5ff&light=0a0f1e`,
-      );
-    };
-
-    if (window.QRCodeLib) {
-      generate();
-      return;
-    }
-
-    const existing = document.getElementById("qrcode-lib");
-    if (existing) {
-      existing.addEventListener("load", generate, { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = "qrcode-lib";
-    script.src =
-      "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js";
-    script.onload = () => {
-      window.QRCodeLib =
-        (window as any).QRCode || (window as any).qrcode || null;
-      generate();
-    };
-    script.onerror = () => {
-      generate();
-    };
-    document.head.appendChild(script);
+    loadQRLib()
+      .then(() => generateQRDataUrl(text))
+      .then(setDataUrl)
+      .catch(() => {});
   }, [text]);
 
   return dataUrl;
@@ -118,6 +194,7 @@ function useQRCodeDataUrl(text: string) {
 
 // ─── Scan Mode ────────────────────────────────────────────────────────────────
 function ScanMode() {
+  const addReceived = useAddReceivedRecord();
   const scanner = useQRScanner({ facingMode: "environment" });
   const [incomingTransfer, setIncomingTransfer] = useState<OFSTransfer | null>(
     null,
@@ -134,6 +211,10 @@ function ScanMode() {
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualCode, setManualCode] = useState("");
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
+  useEffect(() => {
+    scanner.startScanning();
+  }, []);
   useEffect(() => {
     if (scanner.qrResults.length === 0) return;
     const latest = scanner.qrResults[0];
@@ -160,9 +241,16 @@ function ScanMode() {
         clearInterval(progressRef.current!);
         setTransferState("success");
         setSpeed("Done");
+        addReceived.mutate({
+          sender: incomingTransfer?.sender ?? "Nearby Device",
+          fileName: incomingTransfer?.fileName ?? "Unknown File",
+          fileSize: BigInt(
+            parseFileSizeToBytes(incomingTransfer?.fileSize ?? "0"),
+          ),
+        });
       }
     }, 150);
-  }, []);
+  }, [addReceived, incomingTransfer]);
 
   const handleDecline = useCallback(() => {
     setIncomingTransfer(null);
@@ -180,11 +268,22 @@ function ScanMode() {
   const handleManualSubmit = useCallback(() => {
     const trimmed = manualCode.trim();
     if (!trimmed) return;
-    const ofsData = parseOFSData(trimmed);
+    // Resolve 6-digit PIN
+    const digits = trimmed.replace(/[\s-]/g, "");
+    let resolvedCode = trimmed;
+    if (/^\d{6}$/.test(digits)) {
+      const mapped = getPinFromStore(digits);
+      if (!mapped) {
+        toast.error("Code expired or not found");
+        return;
+      }
+      resolvedCode = mapped;
+    }
+    const ofsData = parseOFSData(resolvedCode);
     if (ofsData) {
       setIncomingTransfer(ofsData);
       setTransferState("idle");
-      setLastResult(trimmed);
+      setLastResult(resolvedCode);
       setShowManualEntry(false);
       setManualCode("");
     } else {
@@ -774,7 +873,6 @@ function MyCodeMode() {
   const [step, setStep] = useState<"select" | "qrcode">("select");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [codeCopied, setCodeCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const deviceId = useMemo(() => {
@@ -785,6 +883,32 @@ function MyCodeMode() {
   const ofsCode = selectedFile
     ? `ofs:file:${selectedFile.name}:${formatFileSize(selectedFile.size)}:${deviceId}`
     : `ofs:device:${deviceId}`;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pin is intentionally stable per device
+  const pin = useMemo(() => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }, [deviceId]);
+
+  // Register PIN in the module-level store whenever ofsCode changes
+  useEffect(() => {
+    if (ofsCode) {
+      setPinInStore(pin, ofsCode);
+    }
+    return () => {
+      deletePinFromStore(pin);
+    };
+  }, [pin, ofsCode]);
+
+  const [pinCopied, setPinCopied] = useState(false);
+
+  const handleCopyPin = useCallback(() => {
+    const formatted = `${pin.slice(0, 3)} ${pin.slice(3)}`;
+    navigator.clipboard.writeText(formatted).then(() => {
+      toast.success("PIN copied!");
+      setPinCopied(true);
+      setTimeout(() => setPinCopied(false), 2000);
+    });
+  }, [pin]);
 
   const qrDataUrl = useQRCodeDataUrl(ofsCode);
 
@@ -825,18 +949,9 @@ function MyCodeMode() {
     }
   }, [deviceId, ofsCode, selectedFile]);
 
-  const handleCopyCode = useCallback(() => {
-    navigator.clipboard.writeText(ofsCode).then(() => {
-      toast.success("Code copied!");
-      setCodeCopied(true);
-      setTimeout(() => setCodeCopied(false), 2000);
-    });
-  }, [ofsCode]);
-
   const handleBack = useCallback(() => {
     setStep("select");
     setSelectedFile(null);
-    setCodeCopied(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -1228,48 +1343,54 @@ function MyCodeMode() {
                 </p>
               </div>
 
-              {/* ── Copyable OFS Code ──────────────────────────────────────── */}
-              <div className="w-full flex flex-col gap-2">
+              {/* ── Share PIN ─────────────────────────────────────────────── */}
+              <div
+                className="w-full flex flex-col items-center gap-2 rounded-xl p-4"
+                style={{
+                  background: "oklch(0.07 0.015 260)",
+                  border: "1px solid oklch(0.82 0.15 195 / 0.35)",
+                  boxShadow: "0 0 20px oklch(0.82 0.15 195 / 0.1)",
+                }}
+              >
                 <p
-                  className="text-xs font-semibold"
-                  style={{ color: "oklch(0.6 0.05 260)" }}
+                  className="text-xs font-semibold tracking-widest uppercase"
+                  style={{ color: "oklch(0.65 0.08 195)" }}
                 >
-                  Or share this code manually
+                  Share Code
                 </p>
-                <div
-                  className="w-full flex items-center gap-2 rounded-xl px-3 py-2.5"
-                  style={{
-                    background: "oklch(0.07 0.015 260)",
-                    border: "1px solid oklch(0.82 0.15 195 / 0.2)",
-                    boxShadow: "inset 0 0 12px oklch(0.82 0.15 195 / 0.04)",
-                  }}
-                >
-                  <p
-                    className="flex-1 min-w-0 text-xs font-mono break-all leading-relaxed"
-                    style={{ color: "oklch(0.75 0.08 195)" }}
+                <div className="flex items-center gap-3">
+                  <span
+                    className="font-mono font-bold tracking-[0.25em]"
+                    style={{
+                      fontSize: "2rem",
+                      color: "oklch(0.88 0.18 195)",
+                      textShadow:
+                        "0 0 16px oklch(0.82 0.15 195 / 0.7), 0 0 32px oklch(0.82 0.15 195 / 0.3)",
+                      letterSpacing: "0.25em",
+                    }}
                   >
-                    {ofsCode}
-                  </p>
+                    {pin.slice(0, 3)} {pin.slice(3)}
+                  </span>
                   <button
                     type="button"
-                    data-ocid="scanner.copy_button"
-                    onClick={handleCopyCode}
-                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                    data-ocid="scanner.pin_copy_button"
+                    onClick={handleCopyPin}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
                     style={{
-                      background: codeCopied
+                      background: pinCopied
                         ? "oklch(0.78 0.18 145 / 0.15)"
                         : "oklch(0.82 0.15 195 / 0.12)",
-                      border: codeCopied
+                      border: pinCopied
                         ? "1px solid oklch(0.78 0.18 145 / 0.4)"
                         : "1px solid oklch(0.82 0.15 195 / 0.3)",
-                      color: codeCopied
+                      color: pinCopied
                         ? "oklch(0.78 0.18 145)"
                         : "oklch(0.82 0.15 195)",
                     }}
-                    title="Copy code"
+                    title="Copy PIN"
                   >
                     <AnimatePresence mode="wait" initial={false}>
-                      {codeCopied ? (
+                      {pinCopied ? (
                         <motion.span
                           key="check"
                           initial={{ scale: 0 }}
@@ -1291,6 +1412,9 @@ function MyCodeMode() {
                     </AnimatePresence>
                   </button>
                 </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Receiver types this 6-digit code to get the file instantly
+                </p>
               </div>
 
               <Button
@@ -1395,6 +1519,196 @@ function MyCodeMode() {
   );
 }
 
+// ─── Transferred & Received Files ─────────────────────────────────────────────
+interface HistoryRecord {
+  sender: string;
+  receiver: string;
+  fileName: string;
+  fileSize: string;
+  transferredAt: string;
+  status: "completed" | "failed";
+  fileData?: string; // base64 data URL if available
+}
+
+function TransferredFilesSection() {
+  const [records, setRecords] = useState<HistoryRecord[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("ofs_transfer_history");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setRecords(parsed.slice(0, 20)); // show last 20
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleDownload = useCallback((record: HistoryRecord) => {
+    if (record.fileData) {
+      // If we have actual file data stored
+      const a = document.createElement("a");
+      a.href = record.fileData;
+      a.download = record.fileName;
+      a.click();
+    } else {
+      // Create a placeholder text file with info
+      const text = `OFS Transfer Record\nFile: ${record.fileName}\nSize: ${record.fileSize}\nStatus: ${record.status}\nDate: ${new Date(Number(record.transferredAt) / 1_000_000).toLocaleString()}`;
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${record.fileName}.transfer-info.txt`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  }, []);
+
+  const completedRecords = records.filter((r) => r.status === "completed");
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+      className="mt-6"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <h2
+          className="font-display font-bold text-base"
+          style={{ color: "oklch(0.82 0.15 195)" }}
+        >
+          Transferred & Received Files
+        </h2>
+        <span
+          className="text-xs px-2 py-0.5 rounded-full"
+          style={{
+            background: "oklch(0.82 0.15 195 / 0.12)",
+            color: "oklch(0.82 0.15 195 / 0.7)",
+            border: "1px solid oklch(0.82 0.15 195 / 0.2)",
+          }}
+        >
+          {completedRecords.length} files
+        </span>
+      </div>
+
+      {completedRecords.length === 0 ? (
+        <div
+          data-ocid="scanner.files.empty_state"
+          className="flex flex-col items-center justify-center py-10 rounded-2xl gap-3"
+          style={{
+            background: "oklch(0.1 0.02 260 / 0.5)",
+            border: "1px dashed oklch(0.25 0.04 260 / 0.6)",
+          }}
+        >
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center"
+            style={{
+              background: "oklch(0.82 0.15 195 / 0.08)",
+              border: "1px solid oklch(0.82 0.15 195 / 0.2)",
+            }}
+          >
+            <File size={22} style={{ color: "oklch(0.82 0.15 195 / 0.5)" }} />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            No transferred files yet
+          </p>
+          <p className="text-xs text-muted-foreground opacity-60">
+            Files you send or receive will appear here
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2" data-ocid="scanner.files.list">
+          {completedRecords.map((record, i) => {
+            const date = new Date(Number(record.transferredAt) / 1_000_000);
+            const isReceived = record.sender !== "me";
+            return (
+              <motion.div
+                key={`${record.fileName}-${i}`}
+                data-ocid={`scanner.files.item.${i + 1}`}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="flex items-center gap-3 p-3 rounded-xl"
+                style={{
+                  background: "oklch(0.12 0.025 260 / 0.8)",
+                  border: "1px solid oklch(0.22 0.04 260 / 0.5)",
+                }}
+              >
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: isReceived
+                      ? "oklch(0.78 0.18 145 / 0.15)"
+                      : "oklch(0.82 0.15 195 / 0.12)",
+                    border: isReceived
+                      ? "1px solid oklch(0.78 0.18 145 / 0.4)"
+                      : "1px solid oklch(0.82 0.15 195 / 0.3)",
+                  }}
+                >
+                  <File
+                    size={16}
+                    style={{
+                      color: isReceived
+                        ? "oklch(0.78 0.18 145)"
+                        : "oklch(0.82 0.15 195)",
+                    }}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className="text-sm font-semibold truncate"
+                    style={{ color: "oklch(0.92 0.02 260)" }}
+                  >
+                    {record.fileName}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded-md font-medium"
+                      style={{
+                        background: isReceived
+                          ? "oklch(0.78 0.18 145 / 0.15)"
+                          : "oklch(0.82 0.15 195 / 0.12)",
+                        color: isReceived
+                          ? "oklch(0.78 0.18 145)"
+                          : "oklch(0.82 0.15 195)",
+                      }}
+                    >
+                      {isReceived ? "Received" : "Sent"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {date.toLocaleDateString()}{" "}
+                      {date.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-ocid={`scanner.files.download_button.${i + 1}`}
+                  onClick={() => handleDownload(record)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex-shrink-0"
+                  style={{
+                    background: "oklch(0.78 0.18 145 / 0.12)",
+                    border: "1px solid oklch(0.78 0.18 145 / 0.35)",
+                    color: "oklch(0.78 0.18 145)",
+                  }}
+                >
+                  <Upload size={12} style={{ transform: "rotate(180deg)" }} />
+                  Save
+                </button>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 // ─── Main Scanner Tab ─────────────────────────────────────────────────────────
 export function ScannerTab() {
   const [mode, setMode] = useState<Mode>("scan");
@@ -1486,6 +1800,9 @@ export function ScannerTab() {
           {mode === "scan" ? <ScanMode /> : <MyCodeMode />}
         </motion.div>
       </AnimatePresence>
+
+      {/* Transferred & Received Files */}
+      <TransferredFilesSection />
     </div>
   );
 }

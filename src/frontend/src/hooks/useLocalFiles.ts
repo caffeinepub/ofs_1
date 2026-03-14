@@ -47,16 +47,10 @@ export function useDeleteFile() {
 }
 
 // --- Devices (simulated local) ---
-const SEED_DEVICES = [
-  { name: "Galaxy S25", isConnected: false },
-  { name: "MacBook Pro", isConnected: false },
-  { name: "iPhone 16", isConnected: true },
-  { name: "Pixel 9", isConnected: false },
-  { name: "iPad Pro", isConnected: false },
-];
-
-let localDevices = [
-  ...SEED_DEVICES.sort(() => Math.random() - 0.5).slice(0, 3),
+let localDevices: { name: string; isConnected: boolean }[] = [
+  { name: "Riya's iPhone", isConnected: false },
+  { name: "Samsung Galaxy S23", isConnected: false },
+  { name: "Arjun's OnePlus", isConnected: false },
 ];
 
 export function useGetNearbyDevices() {
@@ -101,6 +95,8 @@ export interface LocalTransferRecord {
   fileSize: bigint;
   transferredAt: bigint;
   status: "completed" | "failed";
+  direction?: "sent" | "received";
+  downloadUrl?: string;
 }
 
 const HISTORY_KEY = "ofs_transfer_history";
@@ -157,6 +153,30 @@ export function useAddTransferRecord() {
         fileSize: r.fileSize,
         transferredAt: BigInt(Date.now()) * BigInt(1_000_000),
         status: r.status,
+      };
+      const existing = loadHistory();
+      saveHistory([record, ...existing]);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["localHistory"] }),
+  });
+}
+
+export function useAddReceivedRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (r: {
+      sender: string;
+      fileName: string;
+      fileSize: bigint;
+    }) => {
+      const record: LocalTransferRecord = {
+        sender: r.sender,
+        receiver: "me",
+        fileName: r.fileName,
+        fileSize: r.fileSize,
+        transferredAt: BigInt(Date.now()) * BigInt(1_000_000),
+        status: "completed",
+        direction: "received",
       };
       const existing = loadHistory();
       saveHistory([record, ...existing]);

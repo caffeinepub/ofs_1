@@ -35,16 +35,11 @@ interface DisplayDevice {
   name: string;
   isConnected: boolean;
   real: boolean;
-  isDemo: boolean;
 }
 
-const DEMO_DEVICES: { name: string; real: boolean; isConnected: boolean }[] = [
-  { name: "Riya's iPhone", real: false, isConnected: false },
-  { name: "Samsung Galaxy S23", real: false, isConnected: false },
-  { name: "Arjun's OnePlus", real: false, isConnected: false },
-];
-
 export function DevicesTab() {
+  const myName = localStorage.getItem("ofs_display_name") || "My Device";
+
   const [customName, setCustomName] = useState("");
   const [connecting, setConnecting] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -62,12 +57,15 @@ export function DevicesTab() {
   // Long press state
   const [longPressTarget, setLongPressTarget] = useState<string | null>(null);
   const [blockedDevices, setBlockedDevices] = useState<string[]>([]);
-  const [deletedDemoDevices, setDeletedDemoDevices] = useState<string[]>([]);
   const [deleteConfirmDevice, setDeleteConfirmDevice] = useState<string | null>(
     null,
   );
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // My Device menu
+  const [myDeviceMenuOpen, setMyDeviceMenuOpen] = useState(false);
+  const myDeviceFileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: devices = [], isLoading, refetch } = useGetNearbyDevices();
   const addDevice = useAddNearbyDevice();
@@ -79,6 +77,7 @@ export function DevicesTab() {
       if (e.key === "Escape") {
         setLongPressTarget(null);
         setDeleteConfirmDevice(null);
+        setMyDeviceMenuOpen(false);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -92,13 +91,7 @@ export function DevicesTab() {
       name: d.name,
       isConnected: d.isConnected,
       real: false,
-      isDemo: false,
     }));
-
-  const visibleDemoDevices: DisplayDevice[] = DEMO_DEVICES.filter(
-    (d) =>
-      !blockedDevices.includes(d.name) && !deletedDemoDevices.includes(d.name),
-  ).map((d) => ({ ...d, isDemo: true }));
 
   const displayDevices: DisplayDevice[] = [
     ...bluetoothDevices
@@ -107,11 +100,9 @@ export function DevicesTab() {
         isConnected:
           devices.find((d) => d.name === b.name)?.isConnected ?? false,
         real: true,
-        isDemo: false,
       }))
       .filter((d) => !blockedDevices.includes(d.name)),
     ...manualDevices.filter((d) => !blockedDevices.includes(d.name)),
-    ...visibleDemoDevices,
   ];
 
   const radarDots = displayDevices.slice(0, 6).map((d, i) => {
@@ -245,17 +236,27 @@ export function DevicesTab() {
   }
 
   function confirmDelete(name: string) {
-    // Check if it's a demo device
-    const isDemo = DEMO_DEVICES.some((d) => d.name === name);
-    if (isDemo) {
-      setDeletedDemoDevices((prev) => [...prev, name]);
-    } else {
-      setBluetoothDevices((prev) => prev.filter((d) => d.name !== name));
-    }
+    setBluetoothDevices((prev) => prev.filter((d) => d.name !== name));
     setDeleteConfirmDevice(null);
     toast.success("Device removed", {
       description: `${name} has been removed`,
     });
+  }
+
+  function handleMyDeviceTransferFile() {
+    myDeviceFileInputRef.current?.click();
+  }
+
+  function handleMyDeviceFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      toast.success(`File ready to transfer: ${file.name}`, {
+        description: `${(file.size / 1024).toFixed(1)} KB`,
+      });
+      setMyDeviceMenuOpen(false);
+    }
+    // Reset input so same file can be selected again
+    e.target.value = "";
   }
 
   return (
@@ -519,20 +520,66 @@ export function DevicesTab() {
               <p className="text-xs text-muted-foreground">
                 Tap a device on radar to send a file
               </p>
-              {/* Demo note */}
-              {visibleDemoDevices.length > 0 && (
-                <p
-                  className="text-[10px] text-center px-3"
-                  style={{ color: "oklch(0.55 0.04 260)" }}
-                >
-                  Demo devices shown for preview. Tap{" "}
-                  <span style={{ color: "oklch(0.65 0.1 240)" }}>
-                    Bluetooth
-                  </span>{" "}
-                  to find real devices.
-                </p>
-              )}
             </motion.div>
+
+            {/* ===== MY DEVICE CARD ===== */}
+            <motion.button
+              type="button"
+              className="w-full glass rounded-xl p-4 flex items-center gap-3 text-left transition-all"
+              style={{
+                border: "1.5px solid oklch(0.82 0.15 195 / 0.45)",
+                boxShadow:
+                  "0 0 18px oklch(0.82 0.15 195 / 0.12), inset 0 0 0 1px oklch(0.82 0.15 195 / 0.08)",
+              }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setMyDeviceMenuOpen(true)}
+              data-ocid="devices.my_device.card"
+            >
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: "oklch(0.82 0.15 195 / 0.18)",
+                  boxShadow: "0 0 12px oklch(0.82 0.15 195 / 0.25)",
+                }}
+              >
+                <Bluetooth
+                  size={18}
+                  style={{ color: "oklch(0.82 0.15 195)" }}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold truncate">{myName}</p>
+                  <span
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                    style={{
+                      background: "oklch(0.78 0.18 145 / 0.2)",
+                      color: "oklch(0.78 0.18 145)",
+                      border: "1px solid oklch(0.78 0.18 145 / 0.35)",
+                    }}
+                  >
+                    THIS DEVICE
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Tap to transfer a file
+                </p>
+              </div>
+              <Smartphone
+                size={16}
+                className="text-muted-foreground shrink-0"
+              />
+            </motion.button>
+
+            {/* Hidden file input for My Device */}
+            <input
+              ref={myDeviceFileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleMyDeviceFileSelected}
+            />
 
             {displayDevices.length === 0 && !isLoading ? (
               <div
@@ -579,20 +626,13 @@ export function DevicesTab() {
                             ? "oklch(0.78 0.18 145 / 0.2)"
                             : device.real
                               ? "oklch(0.65 0.15 240 / 0.2)"
-                              : device.isDemo
-                                ? "oklch(0.45 0.02 260 / 0.35)"
-                                : "oklch(0.82 0.15 195 / 0.15)",
+                              : "oklch(0.82 0.15 195 / 0.15)",
                         }}
                       >
                         {device.isConnected ? (
                           <Check size={18} className="text-emerald-400" />
                         ) : device.real ? (
                           <Bluetooth size={18} className="text-blue-400" />
-                        ) : device.isDemo ? (
-                          <Smartphone
-                            size={18}
-                            style={{ color: "oklch(0.62 0.04 260)" }}
-                          />
                         ) : (
                           <Send size={18} className="text-primary" />
                         )}
@@ -600,20 +640,12 @@ export function DevicesTab() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-semibold">{device.name}</p>
-                          {device.real && (
+                          {device.real ? (
                             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
                               REAL
                             </span>
-                          )}
-                          {device.isDemo && (
-                            <span
-                              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full border"
-                              style={{
-                                background: "oklch(0.45 0.02 260 / 0.25)",
-                                color: "oklch(0.62 0.04 260)",
-                                borderColor: "oklch(0.52 0.03 260 / 0.35)",
-                              }}
-                            >
+                          ) : (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
                               DEMO
                             </span>
                           )}
@@ -623,9 +655,7 @@ export function DevicesTab() {
                             ? "● Connected"
                             : device.real
                               ? "Bluetooth · Nearby"
-                              : device.isDemo
-                                ? "Available · Demo device"
-                                : "Available · Hold to manage"}
+                              : "Available · Hold to manage"}
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -646,7 +676,7 @@ export function DevicesTab() {
                         >
                           <Send size={12} /> Send
                         </Button>
-                        {!device.isConnected && !device.isDemo && (
+                        {!device.isConnected && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -927,6 +957,117 @@ export function DevicesTab() {
                   type="button"
                   className="w-full flex items-center justify-center px-5 py-3.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 active:bg-white/10"
                   onClick={() => setLongPressTarget(null)}
+                  data-ocid="devices.cancel_button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* My Device slide-up menu */}
+      <AnimatePresence>
+        {myDeviceMenuOpen && (
+          <>
+            <motion.div
+              className="fixed inset-0 z-40"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                background: "oklch(0.05 0.02 260 / 0.6)",
+                backdropFilter: "blur(2px)",
+              }}
+              onClick={() => setMyDeviceMenuOpen(false)}
+            />
+            <motion.div
+              className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-8"
+              initial={{ y: 80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 80, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 380, damping: 32 }}
+              data-ocid="devices.sheet"
+            >
+              <div
+                className="rounded-2xl overflow-hidden border"
+                style={{
+                  background: "oklch(0.12 0.025 260 / 0.97)",
+                  borderColor: "oklch(0.82 0.15 195 / 0.35)",
+                  boxShadow:
+                    "0 -8px 40px oklch(0.82 0.15 195 / 0.18), 0 0 0 1px oklch(0.82 0.15 195 / 0.1)",
+                  backdropFilter: "blur(24px)",
+                }}
+              >
+                {/* Device label */}
+                <div
+                  className="px-5 py-4 border-b flex items-center gap-3"
+                  style={{
+                    borderColor: "oklch(0.82 0.15 195 / 0.18)",
+                    background: "oklch(0.82 0.15 195 / 0.06)",
+                  }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{
+                      background: "oklch(0.82 0.15 195 / 0.18)",
+                      boxShadow: "0 0 10px oklch(0.82 0.15 195 / 0.3)",
+                    }}
+                  >
+                    <Bluetooth
+                      size={16}
+                      style={{ color: "oklch(0.82 0.15 195)" }}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">{myName}</p>
+                    <p
+                      className="text-xs"
+                      style={{ color: "oklch(0.82 0.15 195 / 0.7)" }}
+                    >
+                      This Device
+                    </p>
+                  </div>
+                </div>
+
+                {/* Transfer File option */}
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-4 px-5 py-4 transition-colors hover:bg-cyan-500/10 active:bg-cyan-500/15"
+                  onClick={handleMyDeviceTransferFile}
+                  data-ocid="devices.my_device.transfer_button"
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: "oklch(0.82 0.15 195 / 0.15)" }}
+                  >
+                    <Send size={18} style={{ color: "oklch(0.82 0.15 195)" }} />
+                  </div>
+                  <div className="text-left">
+                    <p
+                      className="text-sm font-semibold"
+                      style={{ color: "oklch(0.9 0.12 195)" }}
+                    >
+                      Transfer File
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Select a file to send from this device
+                    </p>
+                  </div>
+                </button>
+
+                {/* Cancel */}
+                <div
+                  style={{
+                    height: 1,
+                    background: "oklch(0.82 0.15 195 / 0.08)",
+                  }}
+                />
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-center px-5 py-3.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 active:bg-white/10"
+                  onClick={() => setMyDeviceMenuOpen(false)}
                   data-ocid="devices.cancel_button"
                 >
                   Cancel

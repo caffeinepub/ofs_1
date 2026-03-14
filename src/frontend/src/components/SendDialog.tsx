@@ -83,7 +83,7 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
       onOpenChange={(o) => !o && step === "select-device" && handleClose()}
     >
       <DialogContent
-        className="glass border-border/50 max-w-sm mx-auto"
+        className="glass border-border/50 max-w-sm mx-auto overflow-hidden"
         data-ocid="send.dialog"
       >
         <DialogHeader>
@@ -92,7 +92,7 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="glass rounded-xl p-3 flex items-center gap-3">
+        <div className="glass rounded-xl p-3 flex items-center gap-3 overflow-hidden">
           <FileIcon fileType={file.fileType} size={18} />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{file.fileName}</p>
@@ -132,7 +132,7 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
                     data-ocid={`send.item.${i + 1}`}
                   >
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center"
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{
                         background: d.isConnected
                           ? "oklch(0.78 0.18 145 / 0.2)"
@@ -146,13 +146,16 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
                         }
                       />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{d.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{d.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {d.isConnected ? "Connected" : "Available"}
                       </p>
                     </div>
-                    <ChevronRight size={16} className="text-muted-foreground" />
+                    <ChevronRight
+                      size={16}
+                      className="text-muted-foreground flex-shrink-0"
+                    />
                   </motion.button>
                 ))
               )}
@@ -225,7 +228,7 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
                   <p className="font-semibold text-emerald-400">
                     Transfer Complete!
                   </p>
-                  <p className="text-xs text-muted-foreground text-center">
+                  <p className="text-xs text-muted-foreground text-center break-all px-2">
                     {file.fileName} was sent to {selectedDevice}
                   </p>
                 </>

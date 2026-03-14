@@ -218,7 +218,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent
-        className="glass border-border/50 max-w-sm mx-auto"
+        className="glass border-border/50 max-w-sm mx-auto overflow-hidden"
         data-ocid="upload.dialog"
       >
         <DialogHeader>
@@ -271,13 +271,13 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
           </button>
         ) : (
           <div className="space-y-3">
-            <div className="glass rounded-xl p-4 flex items-center gap-3">
+            <div className="glass rounded-xl p-4 flex items-center gap-3 overflow-hidden">
               <FileIcon fileType={selectedFile.type} size={20} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate text-foreground">
                   {selectedFile.name}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground truncate">
                   {formatFileSize(selectedFile.size)}
                   {compress && selectedFile.type.startsWith("image/") && (
                     <span className="ml-1" style={{ color: catColor }}>
@@ -290,7 +290,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                 <button
                   type="button"
                   onClick={() => setSelectedFile(null)}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground flex-shrink-0"
                 >
                   <X size={16} />
                 </button>
@@ -401,7 +401,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                       {categoryIcon(recognition.category)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-foreground leading-tight">
+                      <p className="text-xs font-bold text-foreground leading-tight truncate">
                         {recognition.label}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
@@ -409,7 +409,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                       </p>
                     </div>
                     <Badge
-                      className="text-[10px] px-2 py-0 h-5 font-semibold border-0"
+                      className="text-[10px] px-2 py-0 h-5 font-semibold border-0 flex-shrink-0"
                       style={{ background: `${catColor}22`, color: catColor }}
                     >
                       {recognition.category}
@@ -435,9 +435,9 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                         className="h-px mx-4"
                         style={{ background: `${catColor}22` }}
                       />
-                      <div className="px-4 py-2 flex items-center justify-between">
-                        <div className="text-[10px] text-muted-foreground space-y-0.5">
-                          <p>
+                      <div className="px-4 py-2 flex items-center justify-between gap-2">
+                        <div className="text-[10px] text-muted-foreground space-y-0.5 min-w-0 overflow-hidden">
+                          <p className="break-words">
                             <span className="text-foreground font-medium">
                               {imageAnalysis.width} × {imageAnalysis.height}
                             </span>{" "}
@@ -449,14 +449,14 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                             compression possible
                           </p>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           {imageAnalysis.dominantColors
                             .slice(0, 4)
                             .map((color) => (
                               <div
                                 key={color}
                                 title={color}
-                                className="w-4 h-4 rounded-full border border-white/10 flex-shrink-0"
+                                className="w-4 h-4 rounded-full border border-white/10"
                                 style={{ background: color }}
                               />
                             ))}
