@@ -1,10 +1,10 @@
 import { Toaster } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Clock, Home, QrCode, Smartphone, User, Wifi } from "lucide-react";
+import { Clock, Home, User, X } from "lucide-react";
+import { Smartphone } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { GetAppDialog } from "./components/GetAppDialog";
-import { DevicesTab } from "./tabs/DevicesTab";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { HomeTab } from "./tabs/HomeTab";
 import { ProfileTab } from "./tabs/ProfileTab";
@@ -12,7 +12,7 @@ import { ScannerTab } from "./tabs/ScannerTab";
 
 const qc = new QueryClient();
 
-type Tab = "home" | "scanner" | "devices" | "history" | "personal";
+type Tab = "home" | "history" | "personal";
 
 const TABS: {
   id: Tab;
@@ -20,8 +20,6 @@ const TABS: {
   Icon: React.ComponentType<{ size?: number; className?: string }>;
 }[] = [
   { id: "home", label: "Home", Icon: Home },
-  { id: "scanner", label: "Scanner", Icon: QrCode },
-  { id: "devices", label: "Devices", Icon: Wifi },
   { id: "history", label: "History", Icon: Clock },
   { id: "personal", label: "Personal", Icon: User },
 ];
@@ -29,11 +27,10 @@ const TABS: {
 function AppShell() {
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [getAppOpen, setGetAppOpen] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const tabContent: Record<Tab, React.ReactNode> = {
-    home: <HomeTab />,
-    scanner: <ScannerTab />,
-    devices: <DevicesTab />,
+    home: <HomeTab onReceive={() => setShowScanner(true)} />,
     history: <HistoryTab />,
     personal: <ProfileTab />,
   };
@@ -62,7 +59,6 @@ function AppShell() {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {/* Get App button */}
           <button
             type="button"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
@@ -173,6 +169,52 @@ function AppShell() {
       </nav>
 
       <GetAppDialog open={getAppOpen} onClose={() => setGetAppOpen(false)} />
+
+      {/* Scanner fullscreen overlay */}
+      <AnimatePresence>
+        {showScanner && (
+          <motion.div
+            className="fixed inset-0 z-50 flex flex-col"
+            style={{ background: "oklch(0.07 0.015 260)" }}
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            {/* Scanner header */}
+            <div
+              className="flex items-center gap-3 px-5 pt-5 pb-3 flex-shrink-0"
+              style={{ borderBottom: "1px solid oklch(0.2 0.03 260 / 0.5)" }}
+            >
+              <button
+                type="button"
+                className="w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{
+                  background: "oklch(0.15 0.025 260)",
+                  border: "1px solid oklch(0.25 0.04 260 / 0.5)",
+                  color: "oklch(0.82 0.15 195)",
+                }}
+                onClick={() => setShowScanner(false)}
+                data-ocid="scanner.close_button"
+              >
+                <X size={18} />
+              </button>
+              <div>
+                <h1 className="font-display text-lg font-bold gradient-text">
+                  Receive File
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  Point camera at sender's QR code
+                </p>
+              </div>
+            </div>
+            {/* Scanner content */}
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              <ScannerTab />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

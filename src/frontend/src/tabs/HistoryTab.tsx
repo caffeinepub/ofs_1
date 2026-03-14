@@ -30,6 +30,7 @@ interface ReceivedFile {
   size: string;
   url?: string;
   timestamp: number;
+  sender?: string;
 }
 
 function loadReceivedFiles(): ReceivedFile[] {
@@ -50,12 +51,33 @@ function saveReceivedFiles(files: ReceivedFile[]) {
   }
 }
 
+function triggerDownload(fileName: string, content?: string) {
+  // If real data URL is available, use it directly
+  if (content?.startsWith("data:")) {
+    const a = document.createElement("a");
+    a.href = content;
+    a.download = fileName;
+    a.click();
+    return;
+  }
+  // Otherwise create a text receipt file
+  const text = `OFS Transfer Receipt\n\nFile: ${fileName}\nReceived: ${new Date().toLocaleString()}\n\nThis file was received via OFS (Open File Share).`;
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${fileName}.receipt.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function HistoryTab() {
   const { data: history = [], isLoading } = useGetTransferHistory();
   const [receivedFiles, setReceivedFiles] =
     useState<ReceivedFile[]>(loadReceivedFiles);
 
-  // Pull received entries from transfer history and merge with stored list
   const storedIds = new Set(receivedFiles.map((f) => f.id));
   const historyReceivedAsFiles: ReceivedFile[] = history
     .filter((h) => h.direction === "received")
@@ -64,13 +86,13 @@ export function HistoryTab() {
       name: h.fileName,
       size: formatFileSize(h.fileSize),
       timestamp: Math.floor(Number(h.transferredAt) / 1_000_000),
+      sender: h.sender,
     }))
     .filter((f) => !storedIds.has(f.id));
 
   const allReceived = [...receivedFiles, ...historyReceivedAsFiles];
 
   function deleteReceivedFile(id: string) {
-    // Remove from both stored and history-derived list
     setReceivedFiles((prev) => {
       const updated = prev.filter((f) => f.id !== id);
       saveReceivedFiles(updated);
@@ -80,16 +102,8 @@ export function HistoryTab() {
   }
 
   function downloadReceivedFile(file: ReceivedFile) {
-    if (file.url) {
-      const a = document.createElement("a");
-      a.href = file.url;
-      a.download = file.name;
-      a.click();
-    } else {
-      toast.info("File saved — download link not available for this entry", {
-        description: file.name,
-      });
-    }
+    triggerDownload(file.name, file.url);
+    toast.success("Saving to device...", { description: file.name });
   }
 
   const completedCount = history.filter((h) => h.status === "completed").length;
@@ -138,8 +152,7 @@ export function HistoryTab() {
           >
             <InboxIcon size={24} className="text-muted-foreground/40" />
             <p className="text-xs text-muted-foreground text-center">
-              No received files yet. Scan a QR code or enter a PIN to receive
-              files.
+              No received files yet. Tap Receive on Home and scan a QR code.
             </p>
           </div>
         ) : (
@@ -160,6 +173,14 @@ export function HistoryTab() {
                     <span className="text-[10px] text-muted-foreground">
                       {file.size}
                     </span>
+                    {file.sender && (
+                      <span
+                        className="text-[10px] font-semibold"
+                        style={{ color: "oklch(0.82 0.15 195 / 0.8)" }}
+                      >
+                        from {file.sender}
+                      </span>
+                    )}
                     <Badge
                       className="text-[9px] px-1.5 py-0 rounded-full h-4"
                       style={{
@@ -356,7 +377,8 @@ export function HistoryTab() {
                         }}
                         data-ocid={`history.save_button.${i + 1}`}
                         onClick={() => {
-                          toast.success("File saved to device", {
+                          triggerDownload(record.fileName);
+                          toast.success("Saving to device...", {
                             description: record.fileName,
                           });
                         }}

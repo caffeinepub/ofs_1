@@ -13,7 +13,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Brain,
   Clock,
+  Download,
   HardDrive,
+  Inbox,
   ScanLine,
   Send,
   Share2,
@@ -27,14 +29,9 @@ import {
   formatFileSize,
   formatTimestamp,
 } from "../components/FileIcon";
-import { RadarScanner } from "../components/RadarScanner";
 import { SendDialog } from "../components/SendDialog";
 import { UploadDialog } from "../components/UploadDialog";
-import {
-  useDeleteFile,
-  useGetMyFiles,
-  useGetNearbyDevices,
-} from "../hooks/useLocalFiles";
+import { useDeleteFile, useGetMyFiles } from "../hooks/useLocalFiles";
 import type { LocalFileMetadata } from "../utils/localFileStore";
 
 const AI_FEATURES = [
@@ -61,7 +58,11 @@ const AI_FEATURES = [
   },
 ];
 
-export function HomeTab() {
+interface HomeTabProps {
+  onReceive?: () => void;
+}
+
+export function HomeTab({ onReceive }: HomeTabProps) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [sendFile, setSendFile] = useState<LocalFileMetadata | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LocalFileMetadata | null>(
@@ -73,22 +74,9 @@ export function HomeTab() {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: files = [], isLoading: filesLoading } = useGetMyFiles();
-  const { data: devices = [], isLoading: devicesLoading } =
-    useGetNearbyDevices();
   const deleteFile = useDeleteFile();
 
   const recentFiles = files.slice(0, 4);
-
-  const radarDots = devices.slice(0, 5).map((d, i) => {
-    const angle = (i / Math.max(devices.length, 1)) * 2 * Math.PI - Math.PI / 2;
-    const dist = 0.45 + (i % 2) * 0.25;
-    return {
-      x: Math.cos(angle) * dist,
-      y: Math.sin(angle) * dist,
-      label: d.name,
-      connected: d.isConnected,
-    };
-  });
 
   const totalSize = files.reduce((acc, f) => acc + Number(f.fileSize), 0);
 
@@ -120,18 +108,19 @@ export function HomeTab() {
           transition={{ delay: 0.1 }}
         >
           <div className="flex items-center gap-2 mb-2">
-            <Zap size={15} className="text-yellow-400" />
+            <Clock size={15} className="text-muted-foreground" />
             <span className="text-xs text-muted-foreground uppercase tracking-wide">
-              Nearby
+              Files
             </span>
           </div>
-          <p className="text-xl font-display font-semibold">{devices.length}</p>
-          <p className="text-xs text-muted-foreground">devices found</p>
+          <p className="text-xl font-display font-semibold">{files.length}</p>
+          <p className="text-xs text-muted-foreground">total transferred</p>
         </motion.div>
       </div>
 
+      {/* Send & Receive action buttons */}
       <motion.div
-        className="glass rounded-3xl p-5 flex flex-col items-center gap-4"
+        className="glass rounded-3xl p-5 flex flex-col gap-4"
         initial={{ opacity: 0, scale: 0.97 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.15 }}
@@ -139,33 +128,55 @@ export function HomeTab() {
         <div className="flex items-center gap-2">
           <Share2 size={16} className="text-primary" />
           <span className="text-sm font-semibold text-foreground">
-            Nearby Devices
+            File Transfer
           </span>
         </div>
 
-        {devicesLoading ? (
-          <div
-            className="w-[220px] h-[220px] rounded-full"
-            style={{ background: "oklch(0.13 0.025 260 / 0.5)" }}
-          />
-        ) : (
-          <RadarScanner dots={radarDots} size={220} />
-        )}
+        <div className="grid grid-cols-2 gap-3">
+          <Button
+            size="lg"
+            className="font-semibold rounded-2xl h-14 text-base flex flex-col gap-1"
+            style={{
+              background:
+                "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
+              color: "oklch(0.08 0.015 260)",
+              boxShadow: "0 4px 24px oklch(0.82 0.15 195 / 0.35)",
+            }}
+            onClick={() => setUploadOpen(true)}
+            data-ocid="home.send.primary_button"
+          >
+            <Send size={20} />
+            <span className="text-xs font-semibold">Send File</span>
+          </Button>
 
-        <Button
-          size="lg"
-          className="w-full font-semibold rounded-2xl h-12 text-base"
-          style={{
-            background:
-              "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
-            color: "oklch(0.08 0.015 260)",
-            boxShadow: "0 4px 24px oklch(0.82 0.15 195 / 0.35)",
-          }}
-          onClick={() => setUploadOpen(true)}
-          data-ocid="home.primary_button"
-        >
-          <Send size={18} className="mr-2" /> Send
-        </Button>
+          <Button
+            size="lg"
+            className="font-semibold rounded-2xl h-14 text-base flex flex-col gap-1"
+            style={{
+              background:
+                "linear-gradient(135deg, oklch(0.65 0.2 295), oklch(0.82 0.15 130))",
+              color: "oklch(0.08 0.015 260)",
+              boxShadow: "0 4px 24px oklch(0.65 0.2 295 / 0.35)",
+            }}
+            onClick={() => onReceive?.()}
+            data-ocid="home.receive.primary_button"
+          >
+            <Inbox size={20} />
+            <span className="text-xs font-semibold">Receive</span>
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground text-center">
+          Tap <span className="text-primary font-medium">Send</span> to pick a
+          file and share it, or{" "}
+          <span
+            style={{ color: "oklch(0.65 0.2 295)" }}
+            className="font-medium"
+          >
+            Receive
+          </span>{" "}
+          to open scanner and accept an incoming transfer
+        </p>
       </motion.div>
 
       <motion.div
@@ -360,6 +371,7 @@ export function HomeTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
       {/* Long-press delete bottom sheet */}
       <AnimatePresence>
         {longPressFile && (
