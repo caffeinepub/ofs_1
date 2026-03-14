@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Send,
   ShieldOff,
+  Smartphone,
   Trash2,
   WifiOff,
   X,
@@ -30,6 +31,19 @@ interface BluetoothDeviceLocal {
   real: boolean;
 }
 
+interface DisplayDevice {
+  name: string;
+  isConnected: boolean;
+  real: boolean;
+  isDemo: boolean;
+}
+
+const DEMO_DEVICES: { name: string; real: boolean; isConnected: boolean }[] = [
+  { name: "Riya's iPhone", real: false, isConnected: false },
+  { name: "Samsung Galaxy S23", real: false, isConnected: false },
+  { name: "Arjun's OnePlus", real: false, isConnected: false },
+];
+
 export function DevicesTab() {
   const [customName, setCustomName] = useState("");
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -48,6 +62,7 @@ export function DevicesTab() {
   // Long press state
   const [longPressTarget, setLongPressTarget] = useState<string | null>(null);
   const [blockedDevices, setBlockedDevices] = useState<string[]>([]);
+  const [deletedDemoDevices, setDeletedDemoDevices] = useState<string[]>([]);
   const [deleteConfirmDevice, setDeleteConfirmDevice] = useState<string | null>(
     null,
   );
@@ -73,16 +88,31 @@ export function DevicesTab() {
   // Show manually added devices that aren't from bluetooth
   const manualDevices = devices
     .filter((d) => !bluetoothDevices.some((b) => b.name === d.name))
-    .map((d) => ({ name: d.name, isConnected: d.isConnected, real: false }));
+    .map((d) => ({
+      name: d.name,
+      isConnected: d.isConnected,
+      real: false,
+      isDemo: false,
+    }));
 
-  const displayDevices = [
-    ...bluetoothDevices.map((b) => ({
-      name: b.name,
-      isConnected: devices.find((d) => d.name === b.name)?.isConnected ?? false,
-      real: true,
-    })),
-    ...manualDevices,
-  ].filter((d) => !blockedDevices.includes(d.name));
+  const visibleDemoDevices: DisplayDevice[] = DEMO_DEVICES.filter(
+    (d) =>
+      !blockedDevices.includes(d.name) && !deletedDemoDevices.includes(d.name),
+  ).map((d) => ({ ...d, isDemo: true }));
+
+  const displayDevices: DisplayDevice[] = [
+    ...bluetoothDevices
+      .map((b) => ({
+        name: b.name,
+        isConnected:
+          devices.find((d) => d.name === b.name)?.isConnected ?? false,
+        real: true,
+        isDemo: false,
+      }))
+      .filter((d) => !blockedDevices.includes(d.name)),
+    ...manualDevices.filter((d) => !blockedDevices.includes(d.name)),
+    ...visibleDemoDevices,
+  ];
 
   const radarDots = displayDevices.slice(0, 6).map((d, i) => {
     const angle = (i / Math.max(displayDevices.length, 1)) * 2 * Math.PI + 0.3;
@@ -215,7 +245,13 @@ export function DevicesTab() {
   }
 
   function confirmDelete(name: string) {
-    setBluetoothDevices((prev) => prev.filter((d) => d.name !== name));
+    // Check if it's a demo device
+    const isDemo = DEMO_DEVICES.some((d) => d.name === name);
+    if (isDemo) {
+      setDeletedDemoDevices((prev) => [...prev, name]);
+    } else {
+      setBluetoothDevices((prev) => prev.filter((d) => d.name !== name));
+    }
     setDeleteConfirmDevice(null);
     toast.success("Device removed", {
       description: `${name} has been removed`,
@@ -461,7 +497,7 @@ export function DevicesTab() {
             )}
 
             <motion.div
-              className="glass rounded-3xl p-5 flex flex-col items-center gap-4"
+              className="glass rounded-3xl p-5 flex flex-col items-center gap-3"
               initial={{ opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
             >
@@ -483,6 +519,19 @@ export function DevicesTab() {
               <p className="text-xs text-muted-foreground">
                 Tap a device on radar to send a file
               </p>
+              {/* Demo note */}
+              {visibleDemoDevices.length > 0 && (
+                <p
+                  className="text-[10px] text-center px-3"
+                  style={{ color: "oklch(0.55 0.04 260)" }}
+                >
+                  Demo devices shown for preview. Tap{" "}
+                  <span style={{ color: "oklch(0.65 0.1 240)" }}>
+                    Bluetooth
+                  </span>{" "}
+                  to find real devices.
+                </p>
+              )}
             </motion.div>
 
             {displayDevices.length === 0 && !isLoading ? (
@@ -530,13 +579,20 @@ export function DevicesTab() {
                             ? "oklch(0.78 0.18 145 / 0.2)"
                             : device.real
                               ? "oklch(0.65 0.15 240 / 0.2)"
-                              : "oklch(0.82 0.15 195 / 0.15)",
+                              : device.isDemo
+                                ? "oklch(0.45 0.02 260 / 0.35)"
+                                : "oklch(0.82 0.15 195 / 0.15)",
                         }}
                       >
                         {device.isConnected ? (
                           <Check size={18} className="text-emerald-400" />
                         ) : device.real ? (
                           <Bluetooth size={18} className="text-blue-400" />
+                        ) : device.isDemo ? (
+                          <Smartphone
+                            size={18}
+                            style={{ color: "oklch(0.62 0.04 260)" }}
+                          />
                         ) : (
                           <Send size={18} className="text-primary" />
                         )}
@@ -549,13 +605,27 @@ export function DevicesTab() {
                               REAL
                             </span>
                           )}
+                          {device.isDemo && (
+                            <span
+                              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full border"
+                              style={{
+                                background: "oklch(0.45 0.02 260 / 0.25)",
+                                color: "oklch(0.62 0.04 260)",
+                                borderColor: "oklch(0.52 0.03 260 / 0.35)",
+                              }}
+                            >
+                              DEMO
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {device.isConnected
                             ? "● Connected"
                             : device.real
                               ? "Bluetooth · Nearby"
-                              : "Available · Hold to manage"}
+                              : device.isDemo
+                                ? "Available · Demo device"
+                                : "Available · Hold to manage"}
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -576,7 +646,7 @@ export function DevicesTab() {
                         >
                           <Send size={12} /> Send
                         </Button>
-                        {!device.isConnected && (
+                        {!device.isConnected && !device.isDemo && (
                           <Button
                             size="sm"
                             variant="outline"

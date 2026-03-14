@@ -2,14 +2,19 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   AlertCircle,
+  ArrowLeft,
   Camera,
   CameraOff,
   Check,
+  ChevronDown,
   Copy,
+  File,
   FlipHorizontal,
+  Keyboard,
   QrCode,
   ScanLine,
   Share2,
+  Upload,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -34,7 +39,6 @@ interface OFSTransfer {
 
 function parseOFSData(data: string): OFSTransfer | null {
   if (!data.startsWith("ofs:")) return null;
-  // Format: ofs:file:filename.ext:size:senderName
   const parts = data.split(":");
   if (parts.length >= 4 && parts[1] === "file") {
     return {
@@ -44,16 +48,24 @@ function parseOFSData(data: string): OFSTransfer | null {
       raw: data,
     };
   }
-  // ofs:device: is a device code, not a file transfer
   return null;
 }
 
-// ─── QR Code generator (My Code mode) ────────────────────────────────────────
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+// ─── QR Code generator ───────────────────────────────────────────────────────
 function useQRCodeDataUrl(text: string) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    setDataUrl(null);
 
     const generate = () => {
       if (window.QRCodeLib) {
@@ -70,7 +82,6 @@ function useQRCodeDataUrl(text: string) {
         );
         return;
       }
-      // Fallback: generate via quickchart.io
       setDataUrl(
         `https://quickchart.io/qr?text=${encodeURIComponent(text)}&size=220&dark=00e5ff&light=0a0f1e`,
       );
@@ -92,13 +103,11 @@ function useQRCodeDataUrl(text: string) {
     script.src =
       "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js";
     script.onload = () => {
-      // qrcode lib uses module.exports - check window.QRCode or window.qrcode
       window.QRCodeLib =
         (window as any).QRCode || (window as any).qrcode || null;
       generate();
     };
     script.onerror = () => {
-      // CDN failed, use fallback
       generate();
     };
     document.head.appendChild(script);
@@ -121,7 +130,10 @@ function ScanMode() {
   const [lastResult, setLastResult] = useState<string | null>(null);
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Handle new QR results
+  // Manual code entry state
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualCode, setManualCode] = useState("");
+
   useEffect(() => {
     if (scanner.qrResults.length === 0) return;
     const latest = scanner.qrResults[0];
@@ -133,7 +145,6 @@ function ScanMode() {
       setIncomingTransfer(ofsData);
       setTransferState("idle");
     }
-    // Non-OFS QR codes just shown in the result card (handled below)
   }, [scanner.qrResults, lastResult]);
 
   const handleAccept = useCallback(() => {
@@ -165,6 +176,22 @@ function ScanMode() {
       toast.success("Copied to clipboard");
     });
   }, [lastResult]);
+
+  const handleManualSubmit = useCallback(() => {
+    const trimmed = manualCode.trim();
+    if (!trimmed) return;
+    const ofsData = parseOFSData(trimmed);
+    if (ofsData) {
+      setIncomingTransfer(ofsData);
+      setTransferState("idle");
+      setLastResult(trimmed);
+      setShowManualEntry(false);
+      setManualCode("");
+    } else {
+      toast.error("Invalid code format");
+    }
+  }, [manualCode]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: cleanup-only on unmount
   useEffect(() => {
     return () => {
@@ -179,7 +206,6 @@ function ScanMode() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Error Banner */}
       <AnimatePresence>
         {scanner.error && (
           <motion.div
@@ -219,7 +245,6 @@ function ScanMode() {
         )}
       </AnimatePresence>
 
-      {/* Camera viewfinder */}
       <div
         className="relative w-full rounded-2xl overflow-hidden"
         style={{
@@ -230,7 +255,6 @@ function ScanMode() {
             "0 0 30px oklch(0.82 0.15 195 / 0.2), inset 0 0 40px oklch(0.05 0.01 260 / 0.8)",
         }}
       >
-        {/* Video feed */}
         <video
           ref={scanner.videoRef}
           className="absolute inset-0 w-full h-full object-cover"
@@ -240,14 +264,12 @@ function ScanMode() {
           style={{ display: scanner.isActive ? "block" : "none" }}
         />
 
-        {/* Canvas for QR processing (hidden) */}
         <canvas
           ref={scanner.canvasRef}
           data-ocid="scanner.canvas_target"
           className="hidden"
         />
 
-        {/* Idle placeholder */}
         {!scanner.isActive && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <div
@@ -268,10 +290,8 @@ function ScanMode() {
           </div>
         )}
 
-        {/* Corner brackets */}
         {scanner.isActive && (
           <>
-            {/* Top-left */}
             <div
               className="absolute top-6 left-6 w-8 h-8"
               style={{
@@ -281,7 +301,6 @@ function ScanMode() {
                   "inset 4px 4px 8px oklch(0.82 0.15 195 / 0.3), 0 0 10px oklch(0.82 0.15 195 / 0.5)",
               }}
             />
-            {/* Top-right */}
             <div
               className="absolute top-6 right-6 w-8 h-8"
               style={{
@@ -291,7 +310,6 @@ function ScanMode() {
                   "inset -4px 4px 8px oklch(0.82 0.15 195 / 0.3), 0 0 10px oklch(0.82 0.15 195 / 0.5)",
               }}
             />
-            {/* Bottom-left */}
             <div
               className="absolute bottom-6 left-6 w-8 h-8"
               style={{
@@ -301,7 +319,6 @@ function ScanMode() {
                   "inset 4px -4px 8px oklch(0.82 0.15 195 / 0.3), 0 0 10px oklch(0.82 0.15 195 / 0.5)",
               }}
             />
-            {/* Bottom-right */}
             <div
               className="absolute bottom-6 right-6 w-8 h-8"
               style={{
@@ -312,7 +329,6 @@ function ScanMode() {
               }}
             />
 
-            {/* Animated scan line */}
             <motion.div
               className="absolute left-8 right-8"
               style={{
@@ -329,7 +345,6 @@ function ScanMode() {
               }}
             />
 
-            {/* Scanning indicator */}
             <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-1.5">
               <div
                 className="w-1.5 h-1.5 rounded-full"
@@ -349,7 +364,6 @@ function ScanMode() {
           </>
         )}
 
-        {/* Loading overlay */}
         <AnimatePresence>
           {scanner.isLoading && (
             <motion.div
@@ -383,7 +397,6 @@ function ScanMode() {
         </AnimatePresence>
       </div>
 
-      {/* Controls */}
       <div className="flex gap-3">
         {!scanner.isActive ? (
           <Button
@@ -432,7 +445,132 @@ function ScanMode() {
         )}
       </div>
 
-      {/* Non-OFS QR result card */}
+      {/* ── Manual Code Entry ─────────────────────────────────────────────── */}
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{
+          border: "1px solid oklch(0.82 0.15 195 / 0.25)",
+          background: "oklch(0.09 0.02 260 / 0.7)",
+        }}
+      >
+        {/* Toggle header */}
+        <button
+          type="button"
+          data-ocid="scanner.toggle"
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 transition-all"
+          style={{
+            background: showManualEntry
+              ? "oklch(0.82 0.15 195 / 0.06)"
+              : "transparent",
+          }}
+          onClick={() => setShowManualEntry((v) => !v)}
+        >
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{
+                background: "oklch(0.82 0.15 195 / 0.1)",
+                border: "1px solid oklch(0.82 0.15 195 / 0.25)",
+              }}
+            >
+              <Keyboard size={14} style={{ color: "oklch(0.82 0.15 195)" }} />
+            </div>
+            <span
+              className="text-sm font-semibold"
+              style={{ color: "oklch(0.82 0.15 195)" }}
+            >
+              Enter Code Manually
+            </span>
+          </div>
+          <motion.div
+            animate={{ rotate: showManualEntry ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ChevronDown
+              size={16}
+              style={{ color: "oklch(0.82 0.15 195 / 0.7)" }}
+            />
+          </motion.div>
+        </button>
+
+        {/* Expandable body */}
+        <AnimatePresence initial={false}>
+          {showManualEntry && (
+            <motion.div
+              key="manual-entry"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25, ease: "easeInOut" }}
+              style={{ overflow: "hidden" }}
+            >
+              <div
+                className="px-4 pb-4 flex flex-col gap-3"
+                style={{
+                  borderTop: "1px solid oklch(0.82 0.15 195 / 0.15)",
+                  paddingTop: "0.875rem",
+                }}
+              >
+                <p className="text-xs text-muted-foreground">
+                  Paste the OFS code shared by the sender to receive their file
+                  instantly — no scanner needed.
+                </p>
+                <input
+                  data-ocid="scanner.code_input"
+                  type="text"
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleManualSubmit()}
+                  placeholder="e.g. ofs:file:photo.jpg:2.3 MB:OFS-Device-4521"
+                  className="w-full rounded-xl px-4 py-3 text-sm font-mono outline-none"
+                  style={{
+                    background: "oklch(0.07 0.015 260)",
+                    border: "1.5px solid oklch(0.82 0.15 195 / 0.3)",
+                    color: "oklch(0.9 0.04 260)",
+                    caretColor: "oklch(0.82 0.15 195)",
+                    boxShadow: "inset 0 0 16px oklch(0.82 0.15 195 / 0.04)",
+                    transition: "border-color 0.2s",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor =
+                      "oklch(0.82 0.15 195 / 0.7)";
+                    e.currentTarget.style.boxShadow =
+                      "0 0 0 3px oklch(0.82 0.15 195 / 0.1), inset 0 0 16px oklch(0.82 0.15 195 / 0.06)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor =
+                      "oklch(0.82 0.15 195 / 0.3)";
+                    e.currentTarget.style.boxShadow =
+                      "inset 0 0 16px oklch(0.82 0.15 195 / 0.04)";
+                  }}
+                />
+                <Button
+                  data-ocid="scanner.code_submit_button"
+                  className="w-full h-11 font-semibold"
+                  style={{
+                    background: manualCode.trim()
+                      ? "oklch(0.82 0.15 195)"
+                      : "oklch(0.18 0.03 260)",
+                    color: manualCode.trim()
+                      ? "oklch(0.06 0.015 260)"
+                      : "oklch(0.4 0.03 260)",
+                    boxShadow: manualCode.trim()
+                      ? "0 0 18px oklch(0.82 0.15 195 / 0.4)"
+                      : "none",
+                    transition: "all 0.2s ease",
+                  }}
+                  disabled={!manualCode.trim()}
+                  onClick={handleManualSubmit}
+                >
+                  <ScanLine size={16} className="mr-2" />
+                  Receive File
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       <AnimatePresence>
         {showResultCard && (
           <motion.div
@@ -474,7 +612,6 @@ function ScanMode() {
         )}
       </AnimatePresence>
 
-      {/* Incoming OFS transfer sheet */}
       <AnimatePresence>
         {incomingTransfer && transferState === "idle" && (
           <motion.div
@@ -634,16 +771,51 @@ function ScanMode() {
 
 // ─── My Code Mode ─────────────────────────────────────────────────────────────
 function MyCodeMode() {
+  const [step, setStep] = useState<"select" | "qrcode">("select");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const deviceId = useMemo(() => {
     const num = Math.floor(1000 + Math.random() * 9000);
     return `OFS-Device-${num}`;
   }, []);
 
-  const ofsCode = `ofs:device:${deviceId}`;
+  const ofsCode = selectedFile
+    ? `ofs:file:${selectedFile.name}:${formatFileSize(selectedFile.size)}:${deviceId}`
+    : `ofs:device:${deviceId}`;
+
   const qrDataUrl = useQRCodeDataUrl(ofsCode);
 
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) setSelectedFile(file);
+    },
+    [],
+  );
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) setSelectedFile(file);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragOver(false);
+  }, []);
+
   const handleShare = useCallback(() => {
-    const text = `Scan to send files to ${deviceId}`;
+    const text = selectedFile
+      ? `Scan to receive ${selectedFile.name} from ${deviceId}`
+      : `Scan to send files to ${deviceId}`;
     if (navigator.share) {
       navigator.share({ title: "OFS Device Code", text, url: ofsCode });
     } else {
@@ -651,149 +823,574 @@ function MyCodeMode() {
         toast.success("Device code copied!");
       });
     }
-  }, [deviceId, ofsCode]);
+  }, [deviceId, ofsCode, selectedFile]);
+
+  const handleCopyCode = useCallback(() => {
+    navigator.clipboard.writeText(ofsCode).then(() => {
+      toast.success("Code copied!");
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    });
+  }, [ofsCode]);
+
+  const handleBack = useCallback(() => {
+    setStep("select");
+    setSelectedFile(null);
+    setCodeCopied(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
 
   return (
-    <div className="flex flex-col items-center gap-6 pt-2">
-      {/* QR card */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        className="relative p-6 rounded-3xl flex flex-col items-center gap-4"
-        style={{
-          background: "oklch(0.11 0.02 260 / 0.9)",
-          border: "1.5px solid oklch(0.82 0.15 195 / 0.5)",
-          boxShadow:
-            "0 0 40px oklch(0.82 0.15 195 / 0.2), 0 0 80px oklch(0.65 0.2 295 / 0.1), inset 0 0 30px oklch(0.82 0.15 195 / 0.03)",
-        }}
-      >
-        {/* Pulsing border glow */}
-        <motion.div
-          className="absolute inset-0 rounded-3xl pointer-events-none"
-          style={{
-            border: "1px solid oklch(0.82 0.15 195 / 0.2)",
-          }}
-          animate={{ opacity: [0.3, 1, 0.3] }}
-          transition={{
-            duration: 2.5,
-            repeat: Number.POSITIVE_INFINITY,
-            ease: "easeInOut",
-          }}
-        />
+    <div className="flex flex-col gap-4 pt-2">
+      <AnimatePresence mode="wait">
+        {step === "select" ? (
+          <motion.div
+            key="select"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="flex flex-col gap-4"
+          >
+            {/* Step indicator */}
+            <div className="flex items-center gap-2 mb-1">
+              <div
+                className="flex items-center gap-1.5 text-xs font-semibold"
+                style={{ color: "oklch(0.82 0.15 195)" }}
+              >
+                <span
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{
+                    background: "oklch(0.82 0.15 195)",
+                    color: "oklch(0.06 0.015 260)",
+                  }}
+                >
+                  1
+                </span>
+                Select File
+              </div>
+              <div
+                className="flex-1 h-px"
+                style={{ background: "oklch(0.25 0.04 260 / 0.5)" }}
+              />
+              <div
+                className="flex items-center gap-1.5 text-xs font-semibold"
+                style={{ color: "oklch(0.45 0.03 260)" }}
+              >
+                <span
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{
+                    background: "oklch(0.2 0.03 260)",
+                    color: "oklch(0.45 0.03 260)",
+                    border: "1px solid oklch(0.3 0.04 260 / 0.5)",
+                  }}
+                >
+                  2
+                </span>
+                Show QR Code
+              </div>
+            </div>
 
-        <p
-          className="text-xs font-semibold uppercase tracking-widest"
-          style={{ color: "oklch(0.82 0.15 195)" }}
-        >
-          My Device Code
-        </p>
-
-        {/* QR Code image */}
-        <div
-          className="rounded-2xl overflow-hidden p-3"
-          style={{
-            background: "oklch(0.06 0.015 260)",
-            border: "1px solid oklch(0.82 0.15 195 / 0.2)",
-          }}
-        >
-          {qrDataUrl ? (
-            <img
-              src={qrDataUrl}
-              alt={`QR code for ${deviceId}`}
-              width={200}
-              height={200}
-              className="block"
-              style={{ imageRendering: "pixelated" }}
+            {/* Drop zone */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
             />
-          ) : (
-            <div
-              className="w-[200px] h-[200px] flex items-center justify-center"
-              data-ocid="scanner.loading_state"
+
+            <motion.div
+              data-ocid="scanner.dropzone"
+              onClick={() => fileInputRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              animate={{
+                scale: isDragOver ? 1.02 : 1,
+                borderColor: isDragOver
+                  ? "oklch(0.82 0.15 195 / 0.8)"
+                  : "oklch(0.82 0.15 195 / 0.3)",
+              }}
+              className="relative flex flex-col items-center justify-center gap-4 rounded-3xl cursor-pointer select-none"
+              style={{
+                minHeight: "200px",
+                background: isDragOver
+                  ? "oklch(0.82 0.15 195 / 0.06)"
+                  : "oklch(0.1 0.02 260 / 0.6)",
+                border: "2px dashed oklch(0.82 0.15 195 / 0.3)",
+                boxShadow: isDragOver
+                  ? "0 0 30px oklch(0.82 0.15 195 / 0.15), inset 0 0 30px oklch(0.82 0.15 195 / 0.05)"
+                  : "none",
+                transition: "background 0.2s, box-shadow 0.2s",
+              }}
             >
               <motion.div
-                animate={{ rotate: 360 }}
-                transition={{
-                  duration: 1,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: "linear",
-                }}
+                animate={{ y: isDragOver ? -6 : 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                className="flex flex-col items-center gap-3"
               >
-                <QrCode
-                  size={40}
-                  style={{ color: "oklch(0.82 0.15 195 / 0.4)" }}
-                />
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                  style={{
+                    background: "oklch(0.82 0.15 195 / 0.1)",
+                    border: "1px solid oklch(0.82 0.15 195 / 0.25)",
+                    boxShadow: "0 0 20px oklch(0.82 0.15 195 / 0.1)",
+                  }}
+                >
+                  <Upload size={28} style={{ color: "oklch(0.82 0.15 195)" }} />
+                </div>
+                <div className="text-center">
+                  <p
+                    className="text-sm font-bold"
+                    style={{ color: "oklch(0.82 0.15 195)" }}
+                  >
+                    {isDragOver ? "Drop it here" : "Select a file to share"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tap to browse or drag & drop
+                  </p>
+                </div>
               </motion.div>
-            </div>
-          )}
-        </div>
 
-        {/* Device ID */}
-        <div className="text-center">
-          <p
-            className="font-mono font-bold text-lg tracking-wider"
-            style={{ color: "oklch(0.82 0.15 195)" }}
-          >
-            {deviceId}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Ask nearby devices to scan this to send you files
-          </p>
-        </div>
-
-        {/* Share button */}
-        <Button
-          className="w-full h-11 font-semibold"
-          style={{
-            background:
-              "linear-gradient(135deg, oklch(0.82 0.15 195 / 0.15), oklch(0.65 0.2 295 / 0.15))",
-            border: "1px solid oklch(0.82 0.15 195 / 0.4)",
-            color: "oklch(0.82 0.15 195)",
-          }}
-          onClick={handleShare}
-        >
-          <Share2 size={16} className="mr-2" />
-          Share Device Code
-        </Button>
-      </motion.div>
-
-      {/* Instructions */}
-      <div
-        className="w-full rounded-2xl p-4"
-        style={{
-          background: "oklch(0.11 0.02 260 / 0.6)",
-          border: "1px solid oklch(0.3 0.05 260 / 0.4)",
-        }}
-      >
-        <p
-          className="text-xs font-semibold uppercase tracking-wide mb-3"
-          style={{ color: "oklch(0.65 0.2 295)" }}
-        >
-          How to receive files
-        </p>
-        <ol className="flex flex-col gap-2">
-          {[
-            "Show this QR code to the sender",
-            "They scan it from the Scanner tab",
-            "Accept the incoming file transfer",
-            "File saves to your device",
-          ].map((step, i) => (
-            <li key={step} className="flex items-start gap-2.5 text-xs">
-              <span
-                className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+              {/* Animated corner accents */}
+              <div
+                className="absolute top-3 left-3 w-4 h-4"
                 style={{
-                  background: "oklch(0.82 0.15 195 / 0.12)",
-                  color: "oklch(0.82 0.15 195)",
-                  border: "1px solid oklch(0.82 0.15 195 / 0.25)",
+                  borderTop: "2px solid oklch(0.82 0.15 195 / 0.5)",
+                  borderLeft: "2px solid oklch(0.82 0.15 195 / 0.5)",
+                }}
+              />
+              <div
+                className="absolute top-3 right-3 w-4 h-4"
+                style={{
+                  borderTop: "2px solid oklch(0.82 0.15 195 / 0.5)",
+                  borderRight: "2px solid oklch(0.82 0.15 195 / 0.5)",
+                }}
+              />
+              <div
+                className="absolute bottom-3 left-3 w-4 h-4"
+                style={{
+                  borderBottom: "2px solid oklch(0.82 0.15 195 / 0.5)",
+                  borderLeft: "2px solid oklch(0.82 0.15 195 / 0.5)",
+                }}
+              />
+              <div
+                className="absolute bottom-3 right-3 w-4 h-4"
+                style={{
+                  borderBottom: "2px solid oklch(0.82 0.15 195 / 0.5)",
+                  borderRight: "2px solid oklch(0.82 0.15 195 / 0.5)",
+                }}
+              />
+            </motion.div>
+
+            {/* Select File button */}
+            <Button
+              data-ocid="scanner.upload_button"
+              className="w-full h-12 font-semibold"
+              style={{
+                background: "oklch(0.82 0.15 195 / 0.12)",
+                border: "1px solid oklch(0.82 0.15 195 / 0.4)",
+                color: "oklch(0.82 0.15 195)",
+              }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <File size={16} className="mr-2" />
+              Browse Files
+            </Button>
+
+            {/* Selected file preview */}
+            <AnimatePresence>
+              {selectedFile && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  className="rounded-2xl p-4 flex items-center gap-3"
+                  style={{
+                    background: "oklch(0.13 0.025 260 / 0.8)",
+                    border: "1px solid oklch(0.65 0.2 295 / 0.4)",
+                    boxShadow: "0 0 16px oklch(0.65 0.2 295 / 0.1)",
+                  }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: "oklch(0.65 0.2 295 / 0.12)",
+                      border: "1px solid oklch(0.65 0.2 295 / 0.3)",
+                    }}
+                  >
+                    <File size={18} style={{ color: "oklch(0.65 0.2 295)" }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">
+                      {selectedFile.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatFileSize(selectedFile.size)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: "oklch(0.65 0.22 25 / 0.1)",
+                      border: "1px solid oklch(0.65 0.22 25 / 0.3)",
+                      color: "oklch(0.75 0.18 25)",
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Continue button */}
+            <Button
+              data-ocid="scanner.confirm_button"
+              disabled={!selectedFile}
+              className="w-full h-12 font-semibold"
+              style={{
+                background: selectedFile
+                  ? "oklch(0.82 0.15 195)"
+                  : "oklch(0.2 0.03 260)",
+                color: selectedFile
+                  ? "oklch(0.06 0.015 260)"
+                  : "oklch(0.4 0.03 260)",
+                boxShadow: selectedFile
+                  ? "0 0 24px oklch(0.82 0.15 195 / 0.45)"
+                  : "none",
+                transition: "all 0.25s ease",
+              }}
+              onClick={() => selectedFile && setStep("qrcode")}
+            >
+              <QrCode size={16} className="mr-2" />
+              {selectedFile ? "Generate QR Code" : "Select a file first"}
+            </Button>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="qrcode"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="flex flex-col items-center gap-5"
+          >
+            {/* Step indicator */}
+            <div className="flex items-center gap-2 w-full mb-1">
+              <div
+                className="flex items-center gap-1.5 text-xs font-semibold"
+                style={{ color: "oklch(0.55 0.03 260)" }}
+              >
+                <span
+                  className="w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{
+                    background: "oklch(0.78 0.18 145 / 0.15)",
+                    border: "1px solid oklch(0.78 0.18 145 / 0.4)",
+                    color: "oklch(0.78 0.18 145)",
+                  }}
+                >
+                  <Check size={11} />
+                </span>
+                Select File
+              </div>
+              <div
+                className="flex-1 h-px"
+                style={{ background: "oklch(0.82 0.15 195 / 0.4)" }}
+              />
+              <div
+                className="flex items-center gap-1.5 text-xs font-semibold"
+                style={{ color: "oklch(0.82 0.15 195)" }}
+              >
+                <span
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{
+                    background: "oklch(0.82 0.15 195)",
+                    color: "oklch(0.06 0.015 260)",
+                  }}
+                >
+                  2
+                </span>
+                Show QR Code
+              </div>
+            </div>
+
+            {/* File info chip */}
+            {selectedFile && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl w-full"
+                style={{
+                  background: "oklch(0.65 0.2 295 / 0.1)",
+                  border: "1px solid oklch(0.65 0.2 295 / 0.3)",
                 }}
               >
-                {i + 1}
-              </span>
-              <span className="text-muted-foreground pt-0.5">{step}</span>
-            </li>
-          ))}
-        </ol>
-      </div>
+                <File
+                  size={15}
+                  style={{ color: "oklch(0.65 0.2 295)", flexShrink: 0 }}
+                />
+                <span className="text-xs font-semibold text-foreground truncate flex-1">
+                  {selectedFile.name}
+                </span>
+                <span
+                  className="text-xs font-mono flex-shrink-0"
+                  style={{ color: "oklch(0.65 0.2 295)" }}
+                >
+                  {formatFileSize(selectedFile.size)}
+                </span>
+              </motion.div>
+            )}
+
+            {/* QR card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="relative p-6 rounded-3xl flex flex-col items-center gap-4 w-full"
+              style={{
+                background: "oklch(0.11 0.02 260 / 0.9)",
+                border: "1.5px solid oklch(0.82 0.15 195 / 0.5)",
+                boxShadow:
+                  "0 0 40px oklch(0.82 0.15 195 / 0.2), 0 0 80px oklch(0.65 0.2 295 / 0.1), inset 0 0 30px oklch(0.82 0.15 195 / 0.03)",
+              }}
+            >
+              <motion.div
+                className="absolute inset-0 rounded-3xl pointer-events-none"
+                style={{ border: "1px solid oklch(0.82 0.15 195 / 0.2)" }}
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{
+                  duration: 2.5,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "easeInOut",
+                }}
+              />
+
+              <p
+                className="text-xs font-semibold uppercase tracking-widest"
+                style={{ color: "oklch(0.82 0.15 195)" }}
+              >
+                Scan to Receive File
+              </p>
+
+              <div
+                className="rounded-2xl overflow-hidden p-3"
+                style={{
+                  background: "oklch(0.06 0.015 260)",
+                  border: "1px solid oklch(0.82 0.15 195 / 0.2)",
+                }}
+              >
+                {qrDataUrl ? (
+                  <img
+                    src={qrDataUrl}
+                    alt={`QR code for ${selectedFile?.name}`}
+                    width={200}
+                    height={200}
+                    className="block"
+                    style={{ imageRendering: "pixelated" }}
+                  />
+                ) : (
+                  <div
+                    className="w-[200px] h-[200px] flex items-center justify-center"
+                    data-ocid="scanner.loading_state"
+                  >
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{
+                        duration: 1,
+                        repeat: Number.POSITIVE_INFINITY,
+                        ease: "linear",
+                      }}
+                    >
+                      <QrCode
+                        size={40}
+                        style={{ color: "oklch(0.82 0.15 195 / 0.4)" }}
+                      />
+                    </motion.div>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center">
+                <p
+                  className="font-mono font-bold text-base tracking-wider"
+                  style={{ color: "oklch(0.82 0.15 195)" }}
+                >
+                  {deviceId}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ask nearby devices to scan this code
+                </p>
+              </div>
+
+              {/* ── Copyable OFS Code ──────────────────────────────────────── */}
+              <div className="w-full flex flex-col gap-2">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "oklch(0.6 0.05 260)" }}
+                >
+                  Or share this code manually
+                </p>
+                <div
+                  className="w-full flex items-center gap-2 rounded-xl px-3 py-2.5"
+                  style={{
+                    background: "oklch(0.07 0.015 260)",
+                    border: "1px solid oklch(0.82 0.15 195 / 0.2)",
+                    boxShadow: "inset 0 0 12px oklch(0.82 0.15 195 / 0.04)",
+                  }}
+                >
+                  <p
+                    className="flex-1 min-w-0 text-xs font-mono break-all leading-relaxed"
+                    style={{ color: "oklch(0.75 0.08 195)" }}
+                  >
+                    {ofsCode}
+                  </p>
+                  <button
+                    type="button"
+                    data-ocid="scanner.copy_button"
+                    onClick={handleCopyCode}
+                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                    style={{
+                      background: codeCopied
+                        ? "oklch(0.78 0.18 145 / 0.15)"
+                        : "oklch(0.82 0.15 195 / 0.12)",
+                      border: codeCopied
+                        ? "1px solid oklch(0.78 0.18 145 / 0.4)"
+                        : "1px solid oklch(0.82 0.15 195 / 0.3)",
+                      color: codeCopied
+                        ? "oklch(0.78 0.18 145)"
+                        : "oklch(0.82 0.15 195)",
+                    }}
+                    title="Copy code"
+                  >
+                    <AnimatePresence mode="wait" initial={false}>
+                      {codeCopied ? (
+                        <motion.span
+                          key="check"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          exit={{ scale: 0 }}
+                        >
+                          <Check size={14} />
+                        </motion.span>
+                      ) : (
+                        <motion.span
+                          key="copy"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          exit={{ scale: 0 }}
+                        >
+                          <Copy size={14} />
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                className="w-full h-11 font-semibold"
+                style={{
+                  background:
+                    "linear-gradient(135deg, oklch(0.82 0.15 195 / 0.15), oklch(0.65 0.2 295 / 0.15))",
+                  border: "1px solid oklch(0.82 0.15 195 / 0.4)",
+                  color: "oklch(0.82 0.15 195)",
+                }}
+                onClick={handleShare}
+              >
+                <Share2 size={16} className="mr-2" />
+                Share Device Code
+              </Button>
+            </motion.div>
+
+            {/* Back button */}
+            <Button
+              data-ocid="scanner.back_button"
+              variant="outline"
+              className="w-full h-11 font-semibold"
+              style={{
+                borderColor: "oklch(0.35 0.05 260 / 0.6)",
+                color: "oklch(0.6 0.05 260)",
+              }}
+              onClick={handleBack}
+            >
+              <ArrowLeft size={16} className="mr-2" />
+              Back — Change File
+            </Button>
+
+            {/* Instructions */}
+            <div
+              className="w-full rounded-2xl p-4"
+              style={{
+                background: "oklch(0.11 0.02 260 / 0.6)",
+                border: "1px solid oklch(0.3 0.05 260 / 0.4)",
+              }}
+            >
+              <p
+                className="text-xs font-semibold uppercase tracking-wide mb-3"
+                style={{ color: "oklch(0.65 0.2 295)" }}
+              >
+                How to share files
+              </p>
+              <ol className="flex flex-col gap-2">
+                {[
+                  "Select a file to share (done ✓)",
+                  "Show this QR code to the receiver",
+                  "They scan it from the Scanner tab",
+                  "Receiver accepts the incoming transfer",
+                ].map((stepText, i) => (
+                  <li
+                    key={stepText}
+                    className="flex items-start gap-2.5 text-xs"
+                  >
+                    <span
+                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                      style={{
+                        background:
+                          i === 0
+                            ? "oklch(0.78 0.18 145 / 0.15)"
+                            : "oklch(0.82 0.15 195 / 0.12)",
+                        color:
+                          i === 0
+                            ? "oklch(0.78 0.18 145)"
+                            : "oklch(0.82 0.15 195)",
+                        border:
+                          i === 0
+                            ? "1px solid oklch(0.78 0.18 145 / 0.35)"
+                            : "1px solid oklch(0.82 0.15 195 / 0.25)",
+                      }}
+                    >
+                      {i === 0 ? <Check size={10} /> : i + 1}
+                    </span>
+                    <span
+                      className="pt-0.5"
+                      style={{
+                        color:
+                          i === 0 ? "oklch(0.78 0.18 145 / 0.8)" : undefined,
+                      }}
+                    >
+                      {i === 0 ? (
+                        <span className="text-muted-foreground line-through">
+                          {stepText}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          {stepText}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -804,7 +1401,6 @@ export function ScannerTab() {
 
   return (
     <div className="pb-6">
-      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
