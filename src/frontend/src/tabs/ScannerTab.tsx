@@ -5,7 +5,6 @@ import {
   Camera,
   CameraOff,
   Check,
-  Copy,
   FlipHorizontal,
   ScanLine,
   X,
@@ -34,6 +33,7 @@ interface OFSTransfer {
   fileName: string;
   fileSize: string;
   sender: string;
+  downloadUrl?: string;
   raw: string;
 }
 
@@ -41,17 +41,26 @@ function parseOFSData(data: string): OFSTransfer | null {
   if (!data.startsWith("ofs:")) return null;
   const parts = data.split(":");
   if (parts.length >= 4 && parts[1] === "file") {
+    let downloadUrl: string | undefined;
+    if (parts.length >= 6) {
+      downloadUrl = parts.slice(5).join(":");
+    }
     return {
       fileName: parts[2] || "Unknown File",
       fileSize: parts[3] || "Unknown Size",
       sender: parts[4] || "Nearby Device",
+      downloadUrl,
       raw: data,
     };
   }
   return null;
 }
 
-export function ScannerTab() {
+interface ScannerTabProps {
+  onClose?: () => void;
+}
+
+export function ScannerTab({ onClose: _onClose }: ScannerTabProps) {
   const addReceived = useAddReceivedRecord();
   const scanner = useQRScanner({ facingMode: "environment" });
   const [incomingTransfer, setIncomingTransfer] = useState<OFSTransfer | null>(
@@ -67,7 +76,11 @@ export function ScannerTab() {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
   useEffect(() => {
-    scanner.startScanning();
+    // Small delay to ensure video element is in DOM before starting camera
+    const t = setTimeout(() => {
+      scanner.startScanning();
+    }, 50);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
@@ -95,503 +108,312 @@ export function ScannerTab() {
         clearInterval(progressRef.current!);
         setTransferState("success");
         setSpeed("Done");
-        addReceived.mutate({
-          sender: incomingTransfer?.sender ?? "Nearby Device",
-          fileName: incomingTransfer?.fileName ?? "Unknown File",
-          fileSize: BigInt(
-            parseFileSizeToBytes(incomingTransfer?.fileSize ?? "0"),
-          ),
-        });
+        if (incomingTransfer) {
+          addReceived.mutate({
+            sender: incomingTransfer.sender,
+            fileName: incomingTransfer.fileName,
+            fileSize: BigInt(parseFileSizeToBytes(incomingTransfer.fileSize)),
+            downloadUrl: incomingTransfer.downloadUrl,
+          });
+          toast.success("File received!", {
+            description: `${incomingTransfer.fileName} saved to History`,
+          });
+        }
       }
-    }, 150);
+    }, 80);
   }, [addReceived, incomingTransfer]);
 
   const handleDecline = useCallback(() => {
-    setIncomingTransfer(null);
     setTransferState("declined");
-    clearInterval(progressRef.current!);
+    setIncomingTransfer(null);
+    setTimeout(() => setTransferState("idle"), 1500);
   }, []);
 
-  const handleCopy = useCallback(() => {
-    if (!lastResult) return;
-    navigator.clipboard.writeText(lastResult).then(() => {
-      toast.success("Copied to clipboard");
-    });
-  }, [lastResult]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: cleanup-only on unmount
   useEffect(() => {
     return () => {
-      clearInterval(progressRef.current!);
+      if (progressRef.current) clearInterval(progressRef.current);
       scanner.stopScanning();
     };
-  }, []);
-
-  const isOFSResult = lastResult?.startsWith("ofs:");
-  const showResultCard =
-    lastResult && !isOFSResult && !incomingTransfer && transferState === "idle";
+  }, [scanner]);
 
   return (
-    <div className="flex flex-col gap-4">
-      <AnimatePresence>
-        {scanner.error && (
-          <motion.div
-            data-ocid="scanner.error_state"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="flex items-start gap-3 p-4 rounded-2xl"
-            style={{
-              background: "oklch(0.2 0.06 25 / 0.4)",
-              border: "1px solid oklch(0.65 0.22 25 / 0.5)",
-            }}
-          >
-            <AlertCircle
-              size={18}
-              className="text-destructive flex-shrink-0 mt-0.5"
-            />
-            <div>
-              <p className="text-sm font-semibold text-destructive">
-                Camera Error
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {scanner.error.type === "permission"
-                  ? "Camera access denied. Tap the lock icon in your browser's address bar → Site Settings → Camera → Allow."
-                  : scanner.error.message}
-              </p>
-              <button
-                type="button"
-                onClick={() => scanner.retry()}
-                className="mt-2 text-xs font-semibold"
-                style={{ color: "oklch(0.82 0.15 195)" }}
-              >
-                Retry
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Camera viewport */}
-      <div
-        className="relative w-full rounded-2xl overflow-hidden"
-        style={{
-          aspectRatio: "1 / 1",
-          background: "oklch(0.06 0.015 260)",
-          border: "2px solid oklch(0.82 0.15 195 / 0.4)",
-          boxShadow:
-            "0 0 30px oklch(0.82 0.15 195 / 0.2), inset 0 0 40px oklch(0.05 0.01 260 / 0.8)",
-        }}
-      >
+    <div className="flex flex-col h-full min-h-[60vh]">
+      {/* Camera view */}
+      <div className="relative flex-1 overflow-hidden bg-black">
+        {/* Always in DOM so ref attaches before camera starts */}
         <video
           ref={scanner.videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
           autoPlay
           playsInline
           muted
-          style={{ display: scanner.isActive ? "block" : "none" }}
+          className={`w-full h-full object-cover ${
+            scanner.isScanning ? "block" : "hidden"
+          }`}
+          style={{ minHeight: 280 }}
         />
-        <canvas
-          ref={scanner.canvasRef}
-          data-ocid="scanner.canvas_target"
-          className="hidden"
-        />
+        {/* Hidden canvas for QR frame grabbing */}
+        <canvas ref={scanner.canvasRef} className="hidden" />
 
-        {!scanner.isActive && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center"
-              style={{
-                background: "oklch(0.82 0.15 195 / 0.08)",
-                border: "1px solid oklch(0.82 0.15 195 / 0.2)",
-              }}
-            >
-              <Camera
-                size={36}
-                style={{ color: "oklch(0.82 0.15 195 / 0.5)" }}
-              />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Tap Start Scanning to activate camera
-            </p>
-          </div>
-        )}
-
-        {scanner.isActive && (
+        {/* Overlay only when scanning */}
+        {scanner.isScanning && (
           <>
-            {[
-              {
-                top: "1.5rem",
-                left: "1.5rem",
-                borderTop: true,
-                borderLeft: true,
-              },
-              {
-                top: "1.5rem",
-                right: "1.5rem",
-                borderTop: true,
-                borderRight: true,
-              },
-              {
-                bottom: "1.5rem",
-                left: "1.5rem",
-                borderBottom: true,
-                borderLeft: true,
-              },
-              {
-                bottom: "1.5rem",
-                right: "1.5rem",
-                borderBottom: true,
-                borderRight: true,
-              },
-            ].map((corner, i) => (
+            {/* Scan overlay */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div
-                key={String(i)}
-                className="absolute w-8 h-8"
-                style={{
-                  top: corner.top,
-                  left: corner.left,
-                  right: corner.right,
-                  bottom: corner.bottom,
-                  borderTop: corner.borderTop
-                    ? "3px solid oklch(0.82 0.15 195)"
-                    : undefined,
-                  borderLeft: corner.borderLeft
-                    ? "3px solid oklch(0.82 0.15 195)"
-                    : undefined,
-                  borderRight: corner.borderRight
-                    ? "3px solid oklch(0.82 0.15 195)"
-                    : undefined,
-                  borderBottom: corner.borderBottom
-                    ? "3px solid oklch(0.82 0.15 195)"
-                    : undefined,
-                  boxShadow: "0 0 10px oklch(0.82 0.15 195 / 0.5)",
-                }}
-              />
-            ))}
-
-            <motion.div
-              className="absolute left-8 right-8"
-              style={{
-                height: "2px",
-                background:
-                  "linear-gradient(90deg, transparent, oklch(0.82 0.15 195), oklch(0.65 0.2 295), oklch(0.82 0.15 195), transparent)",
-                boxShadow: "0 0 12px oklch(0.82 0.15 195 / 0.8)",
-              }}
-              animate={{ top: ["15%", "85%", "15%"] }}
-              transition={{
-                duration: 2.5,
-                ease: "easeInOut",
-                repeat: Number.POSITIVE_INFINITY,
-              }}
-            />
-
-            <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-1.5">
-              <div
-                className="w-1.5 h-1.5 rounded-full"
-                style={{
-                  background: "oklch(0.78 0.18 145)",
-                  boxShadow: "0 0 6px oklch(0.78 0.18 145)",
-                  animation: "device-pulse 1s ease-in-out infinite",
-                }}
-              />
-              <span
-                className="text-xs font-medium"
-                style={{ color: "oklch(0.78 0.18 145)" }}
+                className="w-56 h-56 rounded-2xl relative"
+                style={{ border: "2px solid oklch(0.82 0.15 195 / 0.8)" }}
               >
-                Scanning...
-              </span>
+                <motion.div
+                  className="absolute left-0 right-0 h-0.5 rounded-full"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, transparent, oklch(0.82 0.15 195), transparent)",
+                    top: "50%",
+                  }}
+                  animate={{ top: ["10%", "90%", "10%"] }}
+                  transition={{
+                    duration: 2,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                  }}
+                />
+                {/* Corner decorations */}
+                {(["tl", "tr", "bl", "br"] as const).map((corner) => (
+                  <div
+                    key={corner}
+                    className="absolute w-5 h-5"
+                    style={{
+                      ...(corner === "tl"
+                        ? { top: -2, left: -2 }
+                        : corner === "tr"
+                          ? { top: -2, right: -2 }
+                          : corner === "bl"
+                            ? { bottom: -2, left: -2 }
+                            : { bottom: -2, right: -2 }),
+                      borderColor: "oklch(0.82 0.15 195)",
+                      borderStyle: "solid",
+                      borderWidth: 0,
+                      ...(corner === "tl"
+                        ? {
+                            borderTopWidth: 3,
+                            borderLeftWidth: 3,
+                            borderTopLeftRadius: 6,
+                          }
+                        : corner === "tr"
+                          ? {
+                              borderTopWidth: 3,
+                              borderRightWidth: 3,
+                              borderTopRightRadius: 6,
+                            }
+                          : corner === "bl"
+                            ? {
+                                borderBottomWidth: 3,
+                                borderLeftWidth: 3,
+                                borderBottomLeftRadius: 6,
+                              }
+                            : {
+                                borderBottomWidth: 3,
+                                borderRightWidth: 3,
+                                borderBottomRightRadius: 6,
+                              }),
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Camera controls */}
+            <div className="absolute top-4 right-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={scanner.switchCamera}
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{
+                  background: "oklch(0.12 0.025 260 / 0.8)",
+                  border: "1px solid oklch(0.3 0.05 260 / 0.5)",
+                  color: "oklch(0.82 0.15 195)",
+                }}
+                data-ocid="scanner.flip_camera.button"
+              >
+                <FlipHorizontal size={18} />
+              </button>
+            </div>
+
+            <div className="absolute bottom-4 left-0 right-0 flex justify-center px-4">
+              <p
+                className="text-xs font-semibold px-3 py-1.5 rounded-full"
+                style={{
+                  background: "oklch(0.12 0.025 260 / 0.85)",
+                  color: "oklch(0.82 0.15 195)",
+                  border: "1px solid oklch(0.82 0.15 195 / 0.3)",
+                }}
+              >
+                <ScanLine size={12} className="inline mr-1" />
+                Point camera at sender's QR code
+              </p>
             </div>
           </>
         )}
 
-        <AnimatePresence>
-          {scanner.isLoading && (
-            <motion.div
-              data-ocid="scanner.loading_state"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 flex items-center justify-center"
-              style={{ background: "oklch(0.06 0.015 260 / 0.8)" }}
+        {/* Error / fallback states when NOT scanning */}
+        {!scanner.isScanning &&
+          (scanner.error ? (
+            <div
+              className="flex flex-col items-center justify-center h-full gap-3 p-6"
+              style={{ minHeight: 280 }}
             >
-              <div className="flex flex-col items-center gap-3">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{
-                    duration: 1,
-                    repeat: Number.POSITIVE_INFINITY,
-                    ease: "linear",
-                  }}
-                >
-                  <ScanLine
-                    size={32}
-                    style={{ color: "oklch(0.82 0.15 195)" }}
-                  />
-                </motion.div>
-                <p className="text-sm text-muted-foreground">
-                  Starting camera...
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Controls */}
-      <div className="flex gap-3">
-        {!scanner.isActive ? (
-          <Button
-            data-ocid="scanner.start_button"
-            className="flex-1 h-12 font-semibold"
-            style={{
-              background: "oklch(0.82 0.15 195)",
-              color: "oklch(0.06 0.015 260)",
-              boxShadow: "0 0 20px oklch(0.82 0.15 195 / 0.4)",
-            }}
-            onClick={() => scanner.startScanning()}
-            disabled={scanner.isLoading || scanner.isSupported === false}
-          >
-            <Camera size={18} className="mr-2" />
-            Start Scanning
-          </Button>
-        ) : (
-          <Button
-            data-ocid="scanner.stop_button"
-            variant="outline"
-            className="flex-1 h-12 font-semibold"
-            style={{
-              borderColor: "oklch(0.65 0.22 25 / 0.5)",
-              color: "oklch(0.75 0.18 25)",
-            }}
-            onClick={() => scanner.stopScanning()}
-          >
-            <CameraOff size={18} className="mr-2" />
-            Stop Scanning
-          </Button>
-        )}
-
-        {scanner.isActive && (
-          <Button
-            data-ocid="scanner.switch_button"
-            variant="outline"
-            className="h-12 w-12 p-0"
-            style={{
-              borderColor: "oklch(0.82 0.15 195 / 0.3)",
-              color: "oklch(0.82 0.15 195)",
-            }}
-            onClick={() => scanner.switchCamera()}
-          >
-            <FlipHorizontal size={18} />
-          </Button>
-        )}
-      </div>
-
-      {/* Non-OFS QR result */}
-      <AnimatePresence>
-        {showResultCard && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-            className="rounded-2xl p-4 flex items-start justify-between gap-3"
-            style={{
-              background: "oklch(0.13 0.025 260 / 0.8)",
-              border: "1px solid oklch(0.82 0.15 195 / 0.3)",
-              boxShadow: "0 0 20px oklch(0.82 0.15 195 / 0.1)",
-            }}
-          >
-            <div className="flex-1 min-w-0">
-              <p
-                className="text-xs font-semibold mb-1"
-                style={{ color: "oklch(0.82 0.15 195)" }}
+              <AlertCircle size={36} style={{ color: "oklch(0.65 0.2 25)" }} />
+              <p className="text-sm text-center text-muted-foreground">
+                {scanner.error?.message ?? String(scanner.error)}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={scanner.startScanning}
+                data-ocid="scanner.retry.button"
               >
-                QR Code Detected
-              </p>
-              <p className="text-sm text-foreground break-all line-clamp-3">
-                {lastResult}
-              </p>
+                <Camera size={14} className="mr-2" />
+                Retry
+              </Button>
             </div>
-            <Button
-              data-ocid="scanner.copy_button"
-              size="sm"
-              variant="outline"
-              className="flex-shrink-0"
-              style={{
-                borderColor: "oklch(0.82 0.15 195 / 0.4)",
-                color: "oklch(0.82 0.15 195)",
-              }}
-              onClick={handleCopy}
+          ) : (
+            <div
+              className="flex flex-col items-center justify-center h-full gap-3 p-6"
+              style={{ minHeight: 280 }}
             >
-              <Copy size={14} />
-            </Button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <CameraOff size={36} style={{ color: "oklch(0.5 0.04 260)" }} />
+              <p className="text-sm text-muted-foreground">Camera not active</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={scanner.startScanning}
+                data-ocid="scanner.start.button"
+              >
+                <Camera size={14} className="mr-2" />
+                Start Camera
+              </Button>
+            </div>
+          ))}
+      </div>
 
-      {/* Incoming transfer */}
+      {/* Incoming transfer panel */}
       <AnimatePresence>
-        {incomingTransfer && transferState === "idle" && (
+        {incomingTransfer && (
           <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="rounded-2xl p-5 flex flex-col gap-4"
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="p-4 flex flex-col gap-3"
             style={{
-              background: "oklch(0.13 0.025 260 / 0.95)",
-              border: "1px solid oklch(0.65 0.2 295 / 0.5)",
-              boxShadow:
-                "0 0 30px oklch(0.65 0.2 295 / 0.2), 0 8px 32px oklch(0 0 0 / 0.5)",
+              background: "oklch(0.1 0.02 260 / 0.98)",
+              borderTop: "1px solid oklch(0.25 0.04 260 / 0.6)",
             }}
+            data-ocid="scanner.transfer.panel"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-start gap-3">
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
-                  background: "oklch(0.65 0.2 295 / 0.15)",
-                  border: "1px solid oklch(0.65 0.2 295 / 0.3)",
+                  background: "oklch(0.82 0.15 195 / 0.12)",
+                  border: "1px solid oklch(0.82 0.15 195 / 0.3)",
                 }}
               >
-                <ScanLine size={20} style={{ color: "oklch(0.65 0.2 295)" }} />
+                <ScanLine size={18} style={{ color: "oklch(0.82 0.15 195)" }} />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p
-                  className="text-xs font-semibold"
-                  style={{ color: "oklch(0.65 0.2 295)" }}
+                  className="text-sm font-bold truncate"
+                  style={{ color: "oklch(0.88 0.18 195)" }}
                 >
-                  Incoming File Transfer
-                </p>
-                <p className="text-base font-bold text-foreground">
                   {incomingTransfer.fileName}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {incomingTransfer.fileSize}
+                  {incomingTransfer.fileSize} · from{" "}
+                  <span style={{ color: "oklch(0.78 0.18 145)" }}>
+                    {incomingTransfer.sender}
+                  </span>
                 </p>
-                <p
-                  className="text-sm font-semibold mt-0.5"
-                  style={{ color: "oklch(0.82 0.15 195)" }}
+              </div>
+            </div>
+
+            {transferState === "idle" && (
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  style={{
+                    background: "oklch(0.78 0.18 145 / 0.15)",
+                    border: "1px solid oklch(0.78 0.18 145 / 0.4)",
+                    color: "oklch(0.78 0.18 145)",
+                  }}
+                  onClick={handleAccept}
+                  data-ocid="scanner.accept.button"
                 >
-                  From: {incomingTransfer.sender}
-                </p>
+                  <Check size={15} className="mr-1" />
+                  Accept
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleDecline}
+                  data-ocid="scanner.decline.button"
+                >
+                  <X size={15} className="mr-1" />
+                  Decline
+                </Button>
               </div>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                data-ocid="scanner.accept_button"
-                className="flex-1 h-11 font-semibold"
-                style={{
-                  background: "oklch(0.78 0.18 145)",
-                  color: "oklch(0.06 0.015 260)",
-                  boxShadow: "0 0 16px oklch(0.78 0.18 145 / 0.4)",
-                }}
-                onClick={handleAccept}
-              >
-                <Check size={16} className="mr-1.5" />
-                Accept
-              </Button>
-              <Button
-                data-ocid="scanner.cancel_button"
-                variant="outline"
-                className="flex-1 h-11 font-semibold"
-                style={{
-                  borderColor: "oklch(0.65 0.22 25 / 0.4)",
-                  color: "oklch(0.75 0.18 25)",
-                }}
-                onClick={handleDecline}
-              >
-                <X size={16} className="mr-1.5" />
-                Decline
-              </Button>
-            </div>
-          </motion.div>
-        )}
+            )}
 
-        {incomingTransfer && transferState === "receiving" && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            className="rounded-2xl p-5 flex flex-col gap-3"
-            style={{
-              background: "oklch(0.13 0.025 260 / 0.95)",
-              border: "1px solid oklch(0.82 0.15 195 / 0.4)",
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-foreground">
-                Receiving {incomingTransfer.fileName}
-              </p>
-              <span
-                className="text-xs font-mono"
-                style={{ color: "oklch(0.82 0.15 195)" }}
-              >
-                {speed}
-              </span>
-            </div>
-            <div className="space-y-1.5">
-              <Progress value={progress} className="h-2" />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{Math.round(progress)}%</span>
-                <span>Receiving...</span>
+            {transferState === "receiving" && (
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Receiving...</span>
+                  <span>{speed}</span>
+                </div>
+                <Progress value={progress} className="h-1.5" />
               </div>
-            </div>
-          </motion.div>
-        )}
+            )}
 
-        {transferState === "success" && (
-          <motion.div
-            data-ocid="scanner.success_state"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            className="rounded-2xl p-6 flex flex-col items-center gap-3"
-            style={{
-              background: "oklch(0.13 0.025 260 / 0.95)",
-              border: "1px solid oklch(0.78 0.18 145 / 0.5)",
-              boxShadow: "0 0 30px oklch(0.78 0.18 145 / 0.2)",
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-              className="w-14 h-14 rounded-full flex items-center justify-center"
-              style={{
-                background: "oklch(0.78 0.18 145 / 0.15)",
-                border: "2px solid oklch(0.78 0.18 145 / 0.6)",
-                boxShadow: "0 0 20px oklch(0.78 0.18 145 / 0.4)",
-              }}
-            >
-              <Check size={28} style={{ color: "oklch(0.78 0.18 145)" }} />
-            </motion.div>
-            <div className="text-center">
-              <p
-                className="font-bold text-base"
-                style={{ color: "oklch(0.78 0.18 145)" }}
+            {transferState === "success" && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                style={{
+                  background: "oklch(0.78 0.18 145 / 0.1)",
+                  border: "1px solid oklch(0.78 0.18 145 / 0.3)",
+                }}
+                data-ocid="scanner.success_state"
               >
-                File Received!
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {incomingTransfer?.fileName} saved to History
-              </p>
-              <p
-                className="text-xs font-semibold mt-1"
-                style={{ color: "oklch(0.82 0.15 195 / 0.8)" }}
+                <Check size={16} style={{ color: "oklch(0.78 0.18 145)" }} />
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: "oklch(0.78 0.18 145)" }}
+                >
+                  Received! Check History tab to download.
+                </span>
+              </motion.div>
+            )}
+
+            {transferState === "declined" && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                style={{
+                  background: "oklch(0.65 0.2 25 / 0.1)",
+                  border: "1px solid oklch(0.65 0.2 25 / 0.3)",
+                }}
               >
-                From: {incomingTransfer?.sender}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="text-xs text-muted-foreground underline underline-offset-2"
-              onClick={() => {
-                setTransferState("idle");
-                setIncomingTransfer(null);
-                setLastResult(null);
-              }}
-            >
-              Dismiss
-            </button>
+                <X size={16} style={{ color: "oklch(0.65 0.2 25)" }} />
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: "oklch(0.65 0.2 25)" }}
+                >
+                  Transfer declined
+                </span>
+              </motion.div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

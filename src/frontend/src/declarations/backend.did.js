@@ -39,6 +39,10 @@ export const Device = IDL.Record({
   'name' : IDL.Text,
   'isConnected' : IDL.Bool,
 });
+export const PresenceInfo = IDL.Record({
+  'name' : IDL.Text,
+  'lastSeen' : Time,
+});
 export const TransferRecord = IDL.Record({
   'status' : IDL.Variant({ 'completed' : IDL.Null, 'failed' : IDL.Null }),
   'fileName' : IDL.Text,
@@ -94,8 +98,10 @@ export const idlService = IDL.Service({
   'getFileById' : IDL.Func([ExternalBlob], [FileMetadata], ['query']),
   'getMyFiles' : IDL.Func([], [IDL.Vec(FileMetadata)], ['query']),
   'getNearbyDevices' : IDL.Func([], [IDL.Vec(Device)], ['query']),
+  'getOnlineUsers' : IDL.Func([], [IDL.Vec(PresenceInfo)], ['query']),
   'getTransferHistory' : IDL.Func([], [IDL.Vec(TransferRecord)], ['query']),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'registerPresence' : IDL.Func([IDL.Text], [], []),
   'uploadFile' : IDL.Func(
       [IDL.Text, IDL.Nat, IDL.Text, ExternalBlob],
       [ExternalBlob],
@@ -134,6 +140,7 @@ export const idlFactory = ({ IDL }) => {
     'uploadedBy' : IDL.Principal,
   });
   const Device = IDL.Record({ 'name' : IDL.Text, 'isConnected' : IDL.Bool });
+  const PresenceInfo = IDL.Record({ 'name' : IDL.Text, 'lastSeen' : Time });
   const TransferRecord = IDL.Record({
     'status' : IDL.Variant({ 'completed' : IDL.Null, 'failed' : IDL.Null }),
     'fileName' : IDL.Text,
@@ -189,8 +196,10 @@ export const idlFactory = ({ IDL }) => {
     'getFileById' : IDL.Func([ExternalBlob], [FileMetadata], ['query']),
     'getMyFiles' : IDL.Func([], [IDL.Vec(FileMetadata)], ['query']),
     'getNearbyDevices' : IDL.Func([], [IDL.Vec(Device)], ['query']),
+    'getOnlineUsers' : IDL.Func([], [IDL.Vec(PresenceInfo)], ['query']),
     'getTransferHistory' : IDL.Func([], [IDL.Vec(TransferRecord)], ['query']),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'registerPresence' : IDL.Func([IDL.Text], [], []),
     'uploadFile' : IDL.Func(
         [IDL.Text, IDL.Nat, IDL.Text, ExternalBlob],
         [ExternalBlob],

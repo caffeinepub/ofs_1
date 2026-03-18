@@ -23,6 +23,7 @@ import {
 import { useGetTransferHistory } from "../hooks/useLocalFiles";
 
 const RECEIVED_FILES_KEY = "ofs_received_files";
+const DELETED_IDS_KEY = "ofs_deleted_received_ids";
 
 interface ReceivedFile {
   id: string;
@@ -51,174 +52,214 @@ function saveReceivedFiles(files: ReceivedFile[]) {
   }
 }
 
-function triggerDownload(fileName: string, content?: string) {
-  // If real data URL is available, use it directly
-  if (content?.startsWith("data:")) {
-    const a = document.createElement("a");
-    a.href = content;
-    a.download = fileName;
-    a.click();
+function loadDeletedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_IDS_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDeletedIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
+}
+
+async function triggerDownload(fileName: string, url?: string) {
+  if (!url) {
+    toast.error("File data not available", {
+      description: "The original file data could not be found for download.",
+    });
     return;
   }
-  // Otherwise create a text receipt file
-  const text = `OFS Transfer Receipt\n\nFile: ${fileName}\nReceived: ${new Date().toLocaleString()}\n\nThis file was received via OFS (Open File Share).`;
-  const blob = new Blob([text], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${fileName}.receipt.txt`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  if (url.startsWith("data:") || url.startsWith("blob:")) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
+
+  if (url.startsWith("http")) {
+    try {
+      toast.info("Downloading...", { id: "dl-progress" });
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+      toast.dismiss("dl-progress");
+      toast.success("Download complete!", { description: fileName });
+    } catch {
+      toast.dismiss("dl-progress");
+      toast.error("Download failed", {
+        description: "Could not fetch the file. Please try again.",
+      });
+    }
+    return;
+  }
+
+  // Fallback
+  toast.error("File data not available", {
+    description: "The original file data could not be found for download.",
+  });
 }
 
 export function HistoryTab() {
   const { data: history = [], isLoading } = useGetTransferHistory();
   const [receivedFiles, setReceivedFiles] =
     useState<ReceivedFile[]>(loadReceivedFiles);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(loadDeletedIds);
 
   const storedIds = new Set(receivedFiles.map((f) => f.id));
+  const allDeletedIds = new Set([...storedIds, ...deletedIds]);
+
   const historyReceivedAsFiles: ReceivedFile[] = history
     .filter((h) => h.direction === "received")
     .map((h) => ({
       id: `hist-${String(h.transferredAt)}-${h.fileName}`,
       name: h.fileName,
       size: formatFileSize(h.fileSize),
+      url: h.downloadUrl,
       timestamp: Math.floor(Number(h.transferredAt) / 1_000_000),
       sender: h.sender,
     }))
-    .filter((f) => !storedIds.has(f.id));
+    .filter((f) => !allDeletedIds.has(f.id));
 
-  const allReceived = [...receivedFiles, ...historyReceivedAsFiles];
+  // Also include stored received files (not deleted)
+  const filteredReceivedFiles = receivedFiles.filter(
+    (f) => !deletedIds.has(f.id),
+  );
 
-  function deleteReceivedFile(id: string) {
-    setReceivedFiles((prev) => {
-      const updated = prev.filter((f) => f.id !== id);
-      saveReceivedFiles(updated);
-      return updated;
-    });
-    toast.success("File removed from received list");
+  // Merge: history takes priority (already deduped by id)
+  const mergedReceived: ReceivedFile[] = [
+    ...historyReceivedAsFiles,
+    ...filteredReceivedFiles.filter(
+      (f) => !historyReceivedAsFiles.some((h) => h.id === f.id),
+    ),
+  ].sort((a, b) => b.timestamp - a.timestamp);
+
+  function handleDeleteReceived(id: string) {
+    // Remove from receivedFiles state
+    const newFiles = receivedFiles.filter((f) => f.id !== id);
+    setReceivedFiles(newFiles);
+    saveReceivedFiles(newFiles);
+    // Also track as deleted so history-sourced files are hidden
+    const newDeleted = new Set([...deletedIds, id]);
+    setDeletedIds(newDeleted);
+    saveDeletedIds(newDeleted);
+    toast.success("File removed from history");
   }
 
-  function downloadReceivedFile(file: ReceivedFile) {
-    triggerDownload(file.name, file.url);
-    toast.success("Saving to device...", { description: file.name });
-  }
-
-  const completedCount = history.filter((h) => h.status === "completed").length;
-  const failedCount = history.filter((h) => h.status === "failed").length;
-  const receivedCount = history.filter(
-    (h) => h.direction === "received",
-  ).length;
+  const sentHistory = history.filter(
+    (h) => h.direction !== "received" || !h.direction,
+  );
 
   return (
-    <div className="tab-content space-y-4 pb-4">
-      <div>
-        <h2 className="font-display font-bold text-xl">Transfer History</h2>
-        <p className="text-xs text-muted-foreground">
-          {history.length} transfers recorded
-        </p>
-      </div>
-
-      {/* ===== RECEIVED FILES SECTION ===== */}
-      <div className="glass rounded-2xl overflow-hidden">
-        <div
-          className="px-4 py-3 flex items-center gap-2 border-b border-border/30"
-          style={{ background: "oklch(0.75 0.18 195 / 0.08)" }}
-        >
-          <InboxIcon size={15} style={{ color: "oklch(0.82 0.15 195)" }} />
-          <p
-            className="text-sm font-semibold"
+    <div className="flex flex-col gap-5 py-4">
+      {/* Received Files Section */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <ArrowDownLeft size={16} style={{ color: "oklch(0.82 0.15 195)" }} />
+          <h2
+            className="text-sm font-bold uppercase tracking-wide"
             style={{ color: "oklch(0.82 0.15 195)" }}
           >
             Received Files
-          </p>
-          <span
-            className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full"
-            style={{
-              background: "oklch(0.75 0.18 195 / 0.18)",
-              color: "oklch(0.82 0.15 195)",
-            }}
-          >
-            {allReceived.length}
-          </span>
+          </h2>
+          {mergedReceived.length > 0 && (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+              {mergedReceived.length}
+            </Badge>
+          )}
         </div>
 
-        {allReceived.length === 0 ? (
+        {isLoading ? (
           <div
-            className="p-6 flex flex-col items-center gap-2"
-            data-ocid="received.empty_state"
+            className="flex flex-col gap-2"
+            data-ocid="history.loading_state"
           >
-            <InboxIcon size={24} className="text-muted-foreground/40" />
-            <p className="text-xs text-muted-foreground text-center">
-              No received files yet. Tap Receive on Home and scan a QR code.
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-16 rounded-xl" />
+            ))}
+          </div>
+        ) : mergedReceived.length === 0 ? (
+          <div
+            className="flex flex-col items-center justify-center py-8 rounded-2xl gap-2"
+            style={{
+              background: "oklch(0.1 0.02 260 / 0.4)",
+              border: "1px dashed oklch(0.3 0.04 260 / 0.4)",
+            }}
+            data-ocid="history.received.empty_state"
+          >
+            <InboxIcon size={28} style={{ color: "oklch(0.4 0.04 260)" }} />
+            <p className="text-xs text-muted-foreground">
+              No received files yet
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-border/15">
-            {allReceived.map((file, i) => (
+          <div className="flex flex-col gap-2">
+            {mergedReceived.map((file, i) => (
               <motion.div
                 key={file.id}
-                className="px-4 py-3 flex items-center gap-3"
-                initial={{ opacity: 0, x: -8 }}
+                initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
-                data-ocid={`received.item.${i + 1}`}
+                className="glass rounded-xl p-3 flex items-center gap-3"
+                data-ocid={`history.received.item.${i + 1}`}
               >
-                <FileIcon fileType="" size={14} />
+                <FileIcon
+                  fileType={file.name.split(".").pop() || ""}
+                  size={16}
+                />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{file.name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] text-muted-foreground">
-                      {file.size}
-                    </span>
-                    {file.sender && (
-                      <span
-                        className="text-[10px] font-semibold"
-                        style={{ color: "oklch(0.82 0.15 195 / 0.8)" }}
-                      >
-                        from {file.sender}
-                      </span>
-                    )}
-                    <Badge
-                      className="text-[9px] px-1.5 py-0 rounded-full h-4"
-                      style={{
-                        background: "oklch(0.75 0.18 195 / 0.18)",
-                        color: "oklch(0.82 0.15 195)",
-                        border: "none",
-                      }}
-                    >
-                      Received
-                    </Badge>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {file.size}
+                    {file.sender ? ` · from ${file.sender}` : ""}
+                    {file.timestamp
+                      ? ` · ${formatTimestamp(BigInt(file.timestamp * 1_000_000))}`
+                      : ""}
+                  </p>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
                     type="button"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-110"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
                     style={{
-                      background: "oklch(0.78 0.18 145 / 0.15)",
-                      border: "1px solid oklch(0.78 0.18 145 / 0.3)",
-                      color: "oklch(0.78 0.18 145)",
+                      background: "oklch(0.82 0.15 195 / 0.1)",
+                      border: "1px solid oklch(0.82 0.15 195 / 0.25)",
+                      color: "oklch(0.82 0.15 195)",
                     }}
-                    onClick={() => downloadReceivedFile(file)}
-                    data-ocid={`received.save_button.${i + 1}`}
-                    title="Download"
+                    onClick={() => triggerDownload(file.name, file.url)}
+                    data-ocid={`history.received.download_button.${i + 1}`}
                   >
                     <Download size={14} />
                   </button>
                   <button
                     type="button"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-110"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
                     style={{
-                      background: "oklch(0.65 0.22 25 / 0.15)",
-                      border: "1px solid oklch(0.65 0.22 25 / 0.3)",
-                      color: "oklch(0.75 0.2 25)",
+                      background: "oklch(0.65 0.2 25 / 0.1)",
+                      border: "1px solid oklch(0.65 0.2 25 / 0.25)",
+                      color: "oklch(0.65 0.2 25)",
                     }}
-                    onClick={() => deleteReceivedFile(file.id)}
-                    data-ocid={`received.delete_button.${i + 1}`}
-                    title="Delete"
+                    onClick={() => handleDeleteReceived(file.id)}
+                    data-ocid={`history.received.delete_button.${i + 1}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -227,173 +268,83 @@ export function HistoryTab() {
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      {history.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
-          <div className="glass rounded-xl p-3">
-            <p className="text-2xl font-display font-bold text-emerald-400">
-              {completedCount}
-            </p>
-            <p className="text-xs text-muted-foreground">Completed</p>
-          </div>
-          <div className="glass rounded-xl p-3">
-            <p className="text-2xl font-display font-bold text-destructive">
-              {failedCount}
-            </p>
-            <p className="text-xs text-muted-foreground">Failed</p>
-          </div>
-          <div className="glass rounded-xl p-3">
-            <p
-              className="text-2xl font-display font-bold"
-              style={{ color: "oklch(0.75 0.18 195)" }}
-            >
-              {receivedCount}
-            </p>
-            <p className="text-xs text-muted-foreground">Received</p>
-          </div>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-2" data-ocid="history.loading_state">
-          {[0, 1, 2, 3, 4].map((n) => (
-            <Skeleton key={n} className="h-20 rounded-xl" />
-          ))}
-        </div>
-      ) : history.length === 0 ? (
-        <div
-          className="glass rounded-2xl p-10 flex flex-col items-center gap-3"
-          data-ocid="history.empty_state"
-        >
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center"
-            style={{ background: "oklch(0.65 0.2 295 / 0.12)" }}
+      {/* Sent / Transfer History Section */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <ArrowUpRight size={16} style={{ color: "oklch(0.78 0.18 145)" }} />
+          <h2
+            className="text-sm font-bold uppercase tracking-wide"
+            style={{ color: "oklch(0.78 0.18 145)" }}
           >
-            <Clock size={28} className="text-secondary" />
-          </div>
-          <p className="font-semibold">No transfers yet</p>
-          <p className="text-xs text-muted-foreground text-center">
-            Send a file or receive via QR scan to see history
-          </p>
+            Transfer History
+          </h2>
         </div>
-      ) : (
-        <ScrollArea className="h-[calc(100dvh-420px)]">
-          <div className="space-y-2 pr-1">
-            {history.map((record, i) => {
-              const isCompleted = record.status === "completed";
-              const isReceived = record.direction === "received";
-              return (
-                <motion.div
-                  key={
-                    String(record.transferredAt) +
-                    record.fileName +
-                    record.receiver
-                  }
-                  className="glass rounded-xl p-4 flex items-start gap-3"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  data-ocid={`history.item.${i + 1}`}
-                >
-                  <FileIcon fileType="" size={16} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold truncate max-w-[140px]">
-                        {record.fileName}
-                      </p>
-                      <Badge
-                        className="text-[10px] px-2 py-0 rounded-full"
-                        style={{
-                          background: isCompleted
-                            ? "oklch(0.78 0.18 145 / 0.2)"
-                            : "oklch(0.65 0.22 25 / 0.2)",
-                          color: isCompleted
-                            ? "oklch(0.78 0.18 145)"
-                            : "oklch(0.75 0.2 25)",
-                          border: "none",
-                        }}
-                      >
-                        {isCompleted ? (
-                          <>
-                            <CheckCircle size={10} className="mr-1" />
-                            Completed
-                          </>
-                        ) : (
-                          <>
-                            <XCircle size={10} className="mr-1" />
-                            Failed
-                          </>
-                        )}
-                      </Badge>
-                      <Badge
-                        className="text-[10px] px-2 py-0 rounded-full"
-                        style={{
-                          background: isReceived
-                            ? "oklch(0.75 0.18 195 / 0.2)"
-                            : "oklch(0.65 0.2 295 / 0.2)",
-                          color: isReceived
-                            ? "oklch(0.75 0.18 195)"
-                            : "oklch(0.75 0.18 295)",
-                          border: "none",
-                        }}
-                      >
-                        {isReceived ? "Received" : "Sent"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {formatFileSize(record.fileSize)}
-                    </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      {isReceived ? (
-                        <ArrowDownLeft
-                          size={11}
-                          style={{ color: "oklch(0.75 0.18 195)" }}
-                          className="flex-shrink-0"
-                        />
-                      ) : (
-                        <ArrowUpRight
-                          size={11}
-                          className="text-primary flex-shrink-0"
-                        />
-                      )}
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {isReceived
-                          ? `From: ${record.sender}`
-                          : `To: ${record.receiver}`}
-                      </p>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-                      {formatTimestamp(record.transferredAt)}
-                    </p>
-                    {isReceived && isCompleted && (
-                      <Button
-                        size="sm"
-                        className="mt-2 h-7 text-xs px-3 rounded-lg"
-                        style={{
-                          background: "oklch(0.75 0.18 195 / 0.15)",
-                          color: "oklch(0.75 0.18 195)",
-                          border: "1px solid oklch(0.75 0.18 195 / 0.3)",
-                        }}
-                        data-ocid={`history.save_button.${i + 1}`}
-                        onClick={() => {
-                          triggerDownload(record.fileName);
-                          toast.success("Saving to device...", {
-                            description: record.fileName,
-                          });
-                        }}
-                      >
-                        <Download size={12} className="mr-1" />
-                        Download
-                      </Button>
-                    )}
-                  </div>
-                </motion.div>
-              );
-            })}
+
+        {isLoading ? (
+          <div className="flex flex-col gap-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-14 rounded-xl" />
+            ))}
           </div>
-        </ScrollArea>
-      )}
+        ) : sentHistory.length === 0 ? (
+          <div
+            className="flex flex-col items-center justify-center py-8 rounded-2xl gap-2"
+            style={{
+              background: "oklch(0.1 0.02 260 / 0.4)",
+              border: "1px dashed oklch(0.3 0.04 260 / 0.4)",
+            }}
+            data-ocid="history.sent.empty_state"
+          >
+            <Clock size={28} style={{ color: "oklch(0.4 0.04 260)" }} />
+            <p className="text-xs text-muted-foreground">No transfers yet</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {sentHistory.map((record, i) => (
+              <motion.div
+                key={`${record.transferredAt}-${record.fileName}`}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                className="glass rounded-xl p-3 flex items-center gap-3"
+                data-ocid={`history.sent.item.${i + 1}`}
+              >
+                <FileIcon
+                  fileType={record.fileName.split(".").pop() || ""}
+                  size={16}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {record.fileName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatFileSize(record.fileSize)} ·{" "}
+                    {formatTimestamp(record.transferredAt)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {record.status === "completed" ? (
+                    <CheckCircle
+                      size={16}
+                      style={{ color: "oklch(0.78 0.18 145)" }}
+                    />
+                  ) : (
+                    <XCircle
+                      size={16}
+                      style={{ color: "oklch(0.65 0.2 25)" }}
+                    />
+                  )}
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    {record.status}
+                  </Badge>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

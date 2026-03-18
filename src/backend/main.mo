@@ -2,12 +2,15 @@ import List "mo:core/List";
 import Map "mo:core/Map";
 import Runtime "mo:core/Runtime";
 import Time "mo:core/Time";
+import Iter "mo:core/Iter";
 import Principal "mo:core/Principal";
 
 import MixinAuthorization "authorization/MixinAuthorization";
 import MixinStorage "blob-storage/Mixin";
 import Storage "blob-storage/Storage";
 import AccessControl "authorization/access-control";
+
+
 
 actor {
   let accessControlState = AccessControl.initState();
@@ -39,10 +42,16 @@ actor {
     isConnected : Bool;
   };
 
+  public type PresenceInfo = {
+    name : Text;
+    lastSeen : Time.Time;
+  };
+
   // Internal State
   let files = Map.empty<Principal, List.List<FileMetadata>>();
   let transfers = Map.empty<Principal, List.List<TransferRecord>>();
   let nearbyDevices = Map.empty<Principal, List.List<Device>>();
+  let presence = Map.empty<Principal, PresenceInfo>();
 
   // File Management
   public shared ({ caller }) func uploadFile(
@@ -226,5 +235,27 @@ actor {
       case (null) { [] };
       case (?devices) { devices.toArray() };
     };
+  };
+
+  // Presence Tracking
+  public shared ({ caller }) func registerPresence(name : Text) : async () {
+    let presenceInfo : PresenceInfo = {
+      name;
+      lastSeen = Time.now();
+    };
+    presence.add(caller, presenceInfo);
+  };
+
+  public query ({ caller }) func getOnlineUsers() : async [PresenceInfo] {
+    let now = Time.now();
+    let fiveMinutesNano = 5 * 60 * 1_000_000_000;
+
+    let onlineUsers = presence.values().toArray().filter(
+      func(info) {
+        (now - info.lastSeen) <= fiveMinutesNano;
+      }
+    );
+
+    onlineUsers;
   };
 };

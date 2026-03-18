@@ -8,6 +8,8 @@ import {
 import { Check, QrCode, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ExternalBlob } from "../backend";
+import { useActor } from "../hooks/useActor";
 import type { LocalFileMetadata } from "../utils/localFileStore";
 import { FileIcon, formatFileSize } from "./FileIcon";
 
@@ -61,7 +63,7 @@ function generateQRDataUrl(text: string): Promise<string> {
         height: 220,
         colorDark: "#00e5ff",
         colorLight: "#0a0f1e",
-        correctLevel: QRLib.CorrectLevel?.H ?? 3,
+        correctLevel: QRLib.CorrectLevel?.M ?? 0,
       });
       setTimeout(() => {
         const canvas = div.querySelector("canvas");
@@ -104,13 +106,66 @@ interface SendDialogProps {
 }
 
 export function SendDialog({ open, file, onClose }: SendDialogProps) {
+  const { actor } = useActor();
   const senderName = useMemo(() => {
-    return localStorage.getItem("ofs_display_name") || "OFS User";
+    return (
+      localStorage.getItem("ofs_display_name") ||
+      localStorage.getItem("ofs_user_name") ||
+      "OFS User"
+    );
   }, []);
 
-  const ofsCode = file
-    ? `ofs:file:${file.fileName}:${formatFileSize(Number(file.fileSize))}:${senderName}`
-    : "";
+  const [uploadState, setUploadState] = useState<
+    "idle" | "uploading" | "done" | "error"
+  >("idle");
+  const [directUrl, setDirectUrl] = useState<string | null>(null);
+  const uploadedForRef = useRef<string | null>(null);
+
+  // Upload file when dialog opens
+  useEffect(() => {
+    if (!open || !file || !actor) return;
+    const key = `${file.fileName}-${file.fileSize}`;
+    if (uploadedForRef.current === key) return;
+    uploadedForRef.current = key;
+
+    setUploadState("uploading");
+    setDirectUrl(null);
+
+    (async () => {
+      try {
+        const resp = await fetch(file.objectUrl);
+        const blob = await resp.blob();
+        const arrayBuf = await blob.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuf);
+        const externalBlob = ExternalBlob.fromBytes(uint8);
+        const result = await actor.uploadFile(
+          file.fileName,
+          file.fileSize,
+          file.fileType,
+          externalBlob,
+        );
+        const url = result.getDirectURL();
+        setDirectUrl(url);
+        setUploadState("done");
+      } catch {
+        setUploadState("error");
+      }
+    })();
+  }, [open, file, actor]);
+
+  // Reset when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setUploadState("idle");
+      setDirectUrl(null);
+      uploadedForRef.current = null;
+    }
+  }, [open]);
+
+  const ofsCode =
+    file && directUrl
+      ? `ofs:file:${file.fileName}:${formatFileSize(Number(file.fileSize))}:${senderName}:${directUrl}`
+      : "";
 
   const qrDataUrl = useQRCodeDataUrl(ofsCode);
 
@@ -203,10 +258,49 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
               border: "1px solid oklch(0.82 0.15 195 / 0.2)",
             }}
           >
-            {qrDataUrl ? (
+            {uploadState === "uploading" ? (
+              <div
+                className="w-[200px] h-[200px] flex flex-col items-center justify-center gap-3"
+                data-ocid="send.loading_state"
+              >
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{
+                    duration: 1,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "linear",
+                  }}
+                >
+                  <QrCode
+                    size={40}
+                    style={{ color: "oklch(0.82 0.15 195 / 0.4)" }}
+                  />
+                </motion.div>
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "oklch(0.82 0.15 195 / 0.7)" }}
+                >
+                  Uploading file...
+                </p>
+              </div>
+            ) : uploadState === "error" ? (
+              <div
+                className="w-[200px] h-[200px] flex flex-col items-center justify-center gap-2"
+                data-ocid="send.error_state"
+              >
+                <p
+                  className="text-xs font-semibold text-center"
+                  style={{ color: "oklch(0.65 0.2 25)" }}
+                >
+                  Upload failed.
+                  <br />
+                  Please try again.
+                </p>
+              </div>
+            ) : qrDataUrl ? (
               <img
                 src={qrDataUrl}
-                alt={`QR code for ${file.fileName}`}
+                alt="QR Code"
                 width={200}
                 height={200}
                 className="block"
@@ -257,7 +351,10 @@ export function SendDialog({ open, file, onClose }: SendDialogProps) {
           </p>
           <ol className="flex flex-col gap-2">
             {[
-              { text: "QR code generated (done ✓)", done: true },
+              {
+                text: "File uploading to secure storage",
+                done: uploadState === "done",
+              },
               { text: "Show this screen to the receiver", done: false },
               { text: "Receiver taps Receive on Home & scans", done: false },
               { text: "File is saved to their History tab", done: false },

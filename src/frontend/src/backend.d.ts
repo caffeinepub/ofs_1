@@ -14,6 +14,11 @@ export class ExternalBlob {
     static fromBytes(blob: Uint8Array<ArrayBuffer>): ExternalBlob;
     withUploadProgress(onProgress: (percentage: number) => void): ExternalBlob;
 }
+export interface PresenceInfo {
+    name: string;
+    lastSeen: Time;
+}
+export type Time = bigint;
 export interface FileMetadata {
     id: ExternalBlob;
     fileName: string;
@@ -23,7 +28,6 @@ export interface FileMetadata {
     uploadedAt: Time;
     uploadedBy: Principal;
 }
-export type Time = bigint;
 export interface TransferRecord {
     status: Variant_completed_failed;
     fileName: string;
@@ -55,7 +59,9 @@ export interface backendInterface {
     getFileById(fileId: ExternalBlob): Promise<FileMetadata>;
     getMyFiles(): Promise<Array<FileMetadata>>;
     getNearbyDevices(): Promise<Array<Device>>;
+    getOnlineUsers(): Promise<Array<PresenceInfo>>;
     getTransferHistory(): Promise<Array<TransferRecord>>;
     isCallerAdmin(): Promise<boolean>;
+    registerPresence(name: string): Promise<void>;
     uploadFile(fileName: string, fileSize: bigint, fileType: string, blobId: ExternalBlob): Promise<ExternalBlob>;
 }

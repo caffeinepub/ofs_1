@@ -168,6 +168,7 @@ export function useAddReceivedRecord() {
       sender: string;
       fileName: string;
       fileSize: bigint;
+      downloadUrl?: string;
     }) => {
       const record: LocalTransferRecord = {
         sender: r.sender,
@@ -177,6 +178,7 @@ export function useAddReceivedRecord() {
         transferredAt: BigInt(Date.now()) * BigInt(1_000_000),
         status: "completed",
         direction: "received",
+        downloadUrl: r.downloadUrl,
       };
       const existing = loadHistory();
       saveHistory([record, ...existing]);

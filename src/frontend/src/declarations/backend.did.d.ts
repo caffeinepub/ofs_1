@@ -21,6 +21,7 @@ export interface FileMetadata {
   'uploadedAt' : Time,
   'uploadedBy' : Principal,
 }
+export interface PresenceInfo { 'name' : string, 'lastSeen' : Time }
 export type Time = bigint;
 export interface TransferRecord {
   'status' : { 'completed' : null } |
@@ -74,8 +75,10 @@ export interface _SERVICE {
   'getFileById' : ActorMethod<[ExternalBlob], FileMetadata>,
   'getMyFiles' : ActorMethod<[], Array<FileMetadata>>,
   'getNearbyDevices' : ActorMethod<[], Array<Device>>,
+  'getOnlineUsers' : ActorMethod<[], Array<PresenceInfo>>,
   'getTransferHistory' : ActorMethod<[], Array<TransferRecord>>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'registerPresence' : ActorMethod<[string], undefined>,
   'uploadFile' : ActorMethod<
     [string, bigint, string, ExternalBlob],
     ExternalBlob

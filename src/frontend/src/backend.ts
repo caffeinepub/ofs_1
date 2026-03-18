@@ -89,6 +89,11 @@ export class ExternalBlob {
         return this;
     }
 }
+export interface PresenceInfo {
+    name: string;
+    lastSeen: Time;
+}
+export type Time = bigint;
 export interface FileMetadata {
     id: ExternalBlob;
     fileName: string;
@@ -98,7 +103,6 @@ export interface FileMetadata {
     uploadedAt: Time;
     uploadedBy: Principal;
 }
-export type Time = bigint;
 export interface _CaffeineStorageRefillInformation {
     proposed_top_up_amount?: bigint;
 }
@@ -148,8 +152,10 @@ export interface backendInterface {
     getFileById(fileId: ExternalBlob): Promise<FileMetadata>;
     getMyFiles(): Promise<Array<FileMetadata>>;
     getNearbyDevices(): Promise<Array<Device>>;
+    getOnlineUsers(): Promise<Array<PresenceInfo>>;
     getTransferHistory(): Promise<Array<TransferRecord>>;
     isCallerAdmin(): Promise<boolean>;
+    registerPresence(name: string): Promise<void>;
     uploadFile(fileName: string, fileSize: bigint, fileType: string, blobId: ExternalBlob): Promise<ExternalBlob>;
 }
 import type { ExternalBlob as _ExternalBlob, FileMetadata as _FileMetadata, Time as _Time, TransferRecord as _TransferRecord, UserRole as _UserRole, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
@@ -379,6 +385,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getOnlineUsers(): Promise<Array<PresenceInfo>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getOnlineUsers();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getOnlineUsers();
+            return result;
+        }
+    }
     async getTransferHistory(): Promise<Array<TransferRecord>> {
         if (this.processError) {
             try {
@@ -404,6 +424,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.isCallerAdmin();
+            return result;
+        }
+    }
+    async registerPresence(arg0: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.registerPresence(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.registerPresence(arg0);
             return result;
         }
     }

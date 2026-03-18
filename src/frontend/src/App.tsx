@@ -1,10 +1,18 @@
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Clock, Home, User, X } from "lucide-react";
+import { Clock, Home, User, Users, X } from "lucide-react";
 import { Smartphone } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GetAppDialog } from "./components/GetAppDialog";
+import { UploadDialog } from "./components/UploadDialog";
+import { useActor } from "./hooks/useActor";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { HomeTab } from "./tabs/HomeTab";
 import { ProfileTab } from "./tabs/ProfileTab";
@@ -24,10 +32,56 @@ const TABS: {
   { id: "personal", label: "Personal", Icon: User },
 ];
 
+interface OnlineUser {
+  name: string;
+  initials: string;
+}
+
+function getInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
 function AppShell() {
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [getAppOpen, setGetAppOpen] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [_sendToUser, setSendToUser] = useState<string | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+  const { actor } = useActor();
+
+  // Register presence and poll online users
+  useEffect(() => {
+    if (!actor) return;
+
+    const myName =
+      localStorage.getItem("ofs_display_name") ||
+      localStorage.getItem("ofs_user_name") ||
+      "Anonymous";
+
+    // Register presence
+    actor.registerPresence(myName).catch(() => {});
+
+    // Fetch online users
+    const fetchUsers = () => {
+      actor
+        .getOnlineUsers()
+        .then((users) => {
+          const mapped: OnlineUser[] = users.map((u) => ({
+            name: u.name,
+            initials: getInitials(u.name),
+          }));
+          setOnlineUsers(mapped);
+        })
+        .catch(() => {});
+    };
+
+    fetchUsers();
+    const interval = setInterval(fetchUsers, 30_000);
+    return () => clearInterval(interval);
+  }, [actor]);
 
   const tabContent: Record<Tab, React.ReactNode> = {
     home: <HomeTab onReceive={() => setShowScanner(true)} />,
@@ -58,7 +112,7 @@ function AppShell() {
             OFS
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
@@ -73,6 +127,93 @@ function AppShell() {
             <Smartphone size={13} />
             Get App
           </button>
+
+          {/* Online Users Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                style={{
+                  background: "oklch(0.78 0.18 145 / 0.12)",
+                  border: "1px solid oklch(0.78 0.18 145 / 0.35)",
+                  color: "oklch(0.78 0.18 145)",
+                }}
+                data-ocid="header.online_users.button"
+              >
+                <Users size={13} />
+                Online ({onlineUsers.length})
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-56 p-1"
+              style={{
+                background: "oklch(0.12 0.025 260)",
+                border: "1px solid oklch(0.25 0.04 260 / 0.5)",
+              }}
+            >
+              <div
+                className="px-3 py-2 text-xs font-semibold"
+                style={{ color: "oklch(0.78 0.18 145)" }}
+              >
+                Online Users
+              </div>
+              {onlineUsers.length === 0 ? (
+                <div
+                  className="px-3 py-3 text-xs text-center"
+                  style={{ color: "oklch(0.5 0.04 260)" }}
+                  data-ocid="online_users.empty_state"
+                >
+                  No users online
+                </div>
+              ) : (
+                onlineUsers.map((user, i) => (
+                  <DropdownMenuItem
+                    key={user.name}
+                    className="flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg"
+                    style={{
+                      color: "oklch(0.9 0.01 260)",
+                    }}
+                    data-ocid={`online_users.item.${i + 1}`}
+                    onClick={() => {
+                      setSendToUser(user.name);
+                      setUploadOpen(true);
+                    }}
+                  >
+                    <div className="relative flex-shrink-0">
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style={{
+                          background: "oklch(0.82 0.15 195 / 0.15)",
+                          border: "1px solid oklch(0.82 0.15 195 / 0.3)",
+                          color: "oklch(0.82 0.15 195)",
+                        }}
+                      >
+                        {user.initials}
+                      </div>
+                      <div
+                        className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
+                        style={{
+                          background: "oklch(0.78 0.18 145)",
+                          border: "1.5px solid oklch(0.12 0.025 260)",
+                          boxShadow: "0 0 4px oklch(0.78 0.18 145 / 0.8)",
+                        }}
+                      />
+                    </div>
+                    <span className="flex-1 text-sm truncate">{user.name}</span>
+                    <span
+                      className="text-[10px] font-semibold"
+                      style={{ color: "oklch(0.82 0.15 195)" }}
+                    >
+                      Send
+                    </span>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <div className="flex items-center gap-2">
             <div
               className="w-2 h-2 rounded-full"
@@ -116,50 +257,31 @@ function AppShell() {
             const isActive = activeTab === tab.id;
             return (
               <button
-                type="button"
                 key={tab.id}
-                className="flex-1 flex flex-col items-center justify-center gap-1 relative transition-colors"
+                type="button"
+                className="flex-1 flex flex-col items-center justify-center gap-1 transition-all"
+                style={{
+                  color: isActive
+                    ? "oklch(0.82 0.15 195)"
+                    : "oklch(0.55 0.04 260)",
+                }}
                 onClick={() => setActiveTab(tab.id)}
                 data-ocid={`nav.${tab.id}.tab`}
               >
-                <motion.div
-                  animate={{
-                    scale: isActive ? 1.1 : 1,
-                    y: isActive ? -1 : 0,
+                <tab.Icon size={20} className={isActive ? "" : "opacity-60"} />
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wide"
+                  style={{
+                    opacity: isActive ? 1 : 0.5,
                   }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  className="flex flex-col items-center gap-1"
                 >
-                  <span
-                    style={
-                      isActive
-                        ? {
-                            filter:
-                              "drop-shadow(0 0 6px oklch(0.82 0.15 195 / 0.7))",
-                          }
-                        : {}
-                    }
-                  >
-                    <tab.Icon
-                      size={20}
-                      className={`transition-colors ${
-                        isActive ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    />
-                  </span>
-                  <span
-                    className={`text-[10px] font-medium transition-colors ${
-                      isActive ? "text-primary" : "text-muted-foreground"
-                    }`}
-                  >
-                    {tab.label}
-                  </span>
-                </motion.div>
+                  {tab.label}
+                </span>
                 {isActive && (
                   <motion.div
-                    className="nav-active-dot"
                     layoutId="nav-indicator"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    className="absolute bottom-0 w-8 h-0.5 rounded-full"
+                    style={{ background: "oklch(0.82 0.15 195)" }}
                   />
                 )}
               </button>
@@ -168,53 +290,57 @@ function AppShell() {
         </div>
       </nav>
 
-      <GetAppDialog open={getAppOpen} onClose={() => setGetAppOpen(false)} />
-
-      {/* Scanner fullscreen overlay */}
+      {/* Scanner Overlay */}
       <AnimatePresence>
         {showScanner && (
           <motion.div
             className="fixed inset-0 z-50 flex flex-col"
-            style={{ background: "oklch(0.07 0.015 260)" }}
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
+            style={{ background: "oklch(0.07 0.02 260)" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           >
-            {/* Scanner header */}
             <div
-              className="flex items-center gap-3 px-5 pt-5 pb-3 flex-shrink-0"
-              style={{ borderBottom: "1px solid oklch(0.2 0.03 260 / 0.5)" }}
+              className="safe-top px-5 pt-4 pb-3 flex items-center gap-3"
+              style={{ borderBottom: "1px solid oklch(0.25 0.04 260 / 0.5)" }}
             >
               <button
                 type="button"
+                onClick={() => setShowScanner(false)}
                 className="w-9 h-9 rounded-xl flex items-center justify-center"
                 style={{
-                  background: "oklch(0.15 0.025 260)",
-                  border: "1px solid oklch(0.25 0.04 260 / 0.5)",
+                  background: "oklch(0.82 0.15 195 / 0.1)",
+                  border: "1px solid oklch(0.82 0.15 195 / 0.3)",
                   color: "oklch(0.82 0.15 195)",
                 }}
-                onClick={() => setShowScanner(false)}
                 data-ocid="scanner.close_button"
               >
                 <X size={18} />
               </button>
-              <div>
-                <h1 className="font-display text-lg font-bold gradient-text">
-                  Receive File
-                </h1>
-                <p className="text-xs text-muted-foreground">
-                  Point camera at sender's QR code
-                </p>
-              </div>
+              <span className="font-display font-bold gradient-text">
+                Scan to Receive
+              </span>
             </div>
-            {/* Scanner content */}
-            <div className="flex-1 overflow-y-auto px-4 py-3">
-              <ScannerTab />
+            <div className="flex-1 overflow-y-auto">
+              <ScannerTab onClose={() => setShowScanner(false)} />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Get App Dialog */}
+      <GetAppDialog open={getAppOpen} onClose={() => setGetAppOpen(false)} />
+
+      {/* Upload Dialog */}
+      <UploadDialog
+        open={uploadOpen}
+        onClose={() => {
+          setUploadOpen(false);
+          setSendToUser(null);
+        }}
+      />
+
+      <Toaster />
     </div>
   );
 }
@@ -223,16 +349,6 @@ export default function App() {
   return (
     <QueryClientProvider client={qc}>
       <AppShell />
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          style: {
-            background: "oklch(0.13 0.025 260)",
-            border: "1px solid oklch(0.25 0.04 260)",
-            color: "oklch(0.96 0.005 260)",
-          },
-        }}
-      />
     </QueryClientProvider>
   );
 }
