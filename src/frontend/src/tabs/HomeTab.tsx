@@ -13,9 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Brain,
   Clock,
-  Download,
   HardDrive,
-  Inbox,
   ScanLine,
   Send,
   Share2,
@@ -58,11 +56,7 @@ const AI_FEATURES = [
   },
 ];
 
-interface HomeTabProps {
-  onReceive?: () => void;
-}
-
-export function HomeTab({ onReceive }: HomeTabProps) {
+export function HomeTab() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [sendFile, setSendFile] = useState<LocalFileMetadata | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LocalFileMetadata | null>(
@@ -77,7 +71,6 @@ export function HomeTab({ onReceive }: HomeTabProps) {
   const deleteFile = useDeleteFile();
 
   const recentFiles = files.slice(0, 4);
-
   const totalSize = files.reduce((acc, f) => acc + Number(f.fileSize), 0);
 
   return (
@@ -118,7 +111,7 @@ export function HomeTab({ onReceive }: HomeTabProps) {
         </motion.div>
       </div>
 
-      {/* Send & Receive action buttons */}
+      {/* Send action */}
       <motion.div
         className="glass rounded-3xl p-5 flex flex-col gap-4"
         initial={{ opacity: 0, scale: 0.97 }}
@@ -132,50 +125,26 @@ export function HomeTab({ onReceive }: HomeTabProps) {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Button
-            size="lg"
-            className="font-semibold rounded-2xl h-14 text-base flex flex-col gap-1"
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
-              color: "oklch(0.08 0.015 260)",
-              boxShadow: "0 4px 24px oklch(0.82 0.15 195 / 0.35)",
-            }}
-            onClick={() => setUploadOpen(true)}
-            data-ocid="home.send.primary_button"
-          >
-            <Send size={20} />
-            <span className="text-xs font-semibold">Send File</span>
-          </Button>
-
-          <Button
-            size="lg"
-            className="font-semibold rounded-2xl h-14 text-base flex flex-col gap-1"
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.65 0.2 295), oklch(0.82 0.15 130))",
-              color: "oklch(0.08 0.015 260)",
-              boxShadow: "0 4px 24px oklch(0.65 0.2 295 / 0.35)",
-            }}
-            onClick={() => onReceive?.()}
-            data-ocid="home.receive.primary_button"
-          >
-            <Inbox size={20} />
-            <span className="text-xs font-semibold">Receive</span>
-          </Button>
-        </div>
+        <Button
+          size="lg"
+          className="font-semibold rounded-2xl h-14 text-base flex flex-col gap-1 w-full"
+          style={{
+            background:
+              "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
+            color: "oklch(0.08 0.015 260)",
+            boxShadow: "0 4px 24px oklch(0.82 0.15 195 / 0.35)",
+          }}
+          onClick={() => setUploadOpen(true)}
+          data-ocid="home.send.primary_button"
+        >
+          <Send size={20} />
+          <span className="text-xs font-semibold">Send File</span>
+        </Button>
 
         <p className="text-xs text-muted-foreground text-center">
-          Tap <span className="text-primary font-medium">Send</span> to pick a
-          file and share it, or{" "}
-          <span
-            style={{ color: "oklch(0.65 0.2 295)" }}
-            className="font-medium"
-          >
-            Receive
-          </span>{" "}
-          to open scanner and accept an incoming transfer
+          Tap <span className="text-primary font-medium">Send File</span> to
+          pick a file — a QR code will be generated instantly for the receiver
+          to scan.
         </p>
       </motion.div>
 
@@ -327,7 +296,11 @@ export function HomeTab({ onReceive }: HomeTabProps) {
         )}
       </div>
 
-      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
+      <UploadDialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSend={(file) => setSendFile(file)}
+      />
       <SendDialog
         open={!!sendFile}
         file={sendFile}

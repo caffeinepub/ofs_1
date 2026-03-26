@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Clock, Home, User, Users, X } from "lucide-react";
+import { Clock, Home, User, Users } from "lucide-react";
 import { Smartphone } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -16,7 +16,6 @@ import { useActor } from "./hooks/useActor";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { HomeTab } from "./tabs/HomeTab";
 import { ProfileTab } from "./tabs/ProfileTab";
-import { ScannerTab } from "./tabs/ScannerTab";
 
 const qc = new QueryClient();
 
@@ -46,7 +45,6 @@ function getInitials(name: string): string {
 function AppShell() {
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [getAppOpen, setGetAppOpen] = useState(false);
-  const [showScanner, setShowScanner] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [_sendToUser, setSendToUser] = useState<string | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
@@ -84,7 +82,7 @@ function AppShell() {
   }, [actor]);
 
   const tabContent: Record<Tab, React.ReactNode> = {
-    home: <HomeTab onReceive={() => setShowScanner(true)} />,
+    home: <HomeTab />,
     history: <HistoryTab />,
     personal: <ProfileTab />,
   };
@@ -290,43 +288,10 @@ function AppShell() {
         </div>
       </nav>
 
-      {/* Scanner Overlay — appears instantly, no fade delay */}
-      {showScanner && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col"
-          style={{ background: "oklch(0.07 0.02 260)" }}
-        >
-          <div
-            className="safe-top px-5 pt-4 pb-3 flex items-center gap-3"
-            style={{ borderBottom: "1px solid oklch(0.25 0.04 260 / 0.5)" }}
-          >
-            <button
-              type="button"
-              onClick={() => setShowScanner(false)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{
-                background: "oklch(0.82 0.15 195 / 0.1)",
-                border: "1px solid oklch(0.82 0.15 195 / 0.3)",
-                color: "oklch(0.82 0.15 195)",
-              }}
-              data-ocid="scanner.close_button"
-            >
-              <X size={18} />
-            </button>
-            <span className="font-display font-bold gradient-text">
-              Scan to Receive
-            </span>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <ScannerTab onClose={() => setShowScanner(false)} />
-          </div>
-        </div>
-      )}
-
       {/* Get App Dialog */}
       <GetAppDialog open={getAppOpen} onClose={() => setGetAppOpen(false)} />
 
-      {/* Upload Dialog */}
+      {/* Upload Dialog (from Online Users dropdown) */}
       <UploadDialog
         open={uploadOpen}
         onClose={() => {

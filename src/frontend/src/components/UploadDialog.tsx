@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   Music,
   ScanLine,
+  Send,
   Upload,
   Video,
   X,
@@ -27,11 +28,13 @@ import { toast } from "sonner";
 import { useUploadFile } from "../hooks/useLocalFiles";
 import type { FileRecognition, ImageAnalysis } from "../utils/aiAnalysis";
 import { analyzeImage, recognizeFile } from "../utils/aiAnalysis";
+import type { LocalFileMetadata } from "../utils/localFileStore";
 import { FileIcon, formatFileSize } from "./FileIcon";
 
 interface UploadDialogProps {
   open: boolean;
   onClose: () => void;
+  onSend?: (file: LocalFileMetadata) => void;
 }
 
 function categoryIcon(category: string) {
@@ -74,7 +77,7 @@ function categoryColor(category: string): string {
   }
 }
 
-export function UploadDialog({ open, onClose }: UploadDialogProps) {
+export function UploadDialog({ open, onClose, onSend }: UploadDialogProps) {
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [compress, setCompress] = useState(false);
@@ -180,7 +183,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
         const ab = await selectedFile.arrayBuffer();
         data = new Uint8Array(ab);
       }
-      await uploadFile.mutateAsync({
+      const meta = await uploadFile.mutateAsync({
         fileName: selectedFile.name,
         fileSize: BigInt(data.byteLength),
         fileType: selectedFile.type || "application/octet-stream",
@@ -188,14 +191,15 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
         onProgress: (pct) => setProgress(pct),
       });
       setDone(true);
-      toast.success("File uploaded successfully!");
+      toast.success("File uploaded! Opening send screen...");
       setTimeout(() => {
         setDone(false);
         setSelectedFile(null);
         setProgress(0);
         setUploading(false);
         onClose();
-      }, 1200);
+        if (onSend) onSend(meta);
+      }, 800);
     } catch {
       toast.error("Upload failed. Please try again.");
       setUploading(false);
@@ -223,7 +227,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
       >
         <DialogHeader>
           <DialogTitle className="font-display gradient-text text-xl">
-            Upload File
+            Upload & Send File
           </DialogTitle>
         </DialogHeader>
 
@@ -517,8 +521,8 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                 onClick={handleUpload}
                 data-ocid="upload.submit_button"
               >
-                <Upload size={16} className="mr-2" />
-                Upload File
+                <Send size={16} className="mr-2" />
+                Upload & Send
               </Button>
             )}
 
@@ -530,7 +534,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                 data-ocid="upload.success_state"
               >
                 <FileCheck size={18} />
-                <span>Upload Complete!</span>
+                <span>Uploaded! Opening send screen...</span>
               </motion.div>
             )}
           </div>
