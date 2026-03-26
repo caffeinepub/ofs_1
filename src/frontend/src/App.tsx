@@ -290,43 +290,38 @@ function AppShell() {
         </div>
       </nav>
 
-      {/* Scanner Overlay */}
-      <AnimatePresence>
-        {showScanner && (
-          <motion.div
-            className="fixed inset-0 z-50 flex flex-col"
-            style={{ background: "oklch(0.07 0.02 260)" }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+      {/* Scanner Overlay — appears instantly, no fade delay */}
+      {showScanner && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col"
+          style={{ background: "oklch(0.07 0.02 260)" }}
+        >
+          <div
+            className="safe-top px-5 pt-4 pb-3 flex items-center gap-3"
+            style={{ borderBottom: "1px solid oklch(0.25 0.04 260 / 0.5)" }}
           >
-            <div
-              className="safe-top px-5 pt-4 pb-3 flex items-center gap-3"
-              style={{ borderBottom: "1px solid oklch(0.25 0.04 260 / 0.5)" }}
+            <button
+              type="button"
+              onClick={() => setShowScanner(false)}
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{
+                background: "oklch(0.82 0.15 195 / 0.1)",
+                border: "1px solid oklch(0.82 0.15 195 / 0.3)",
+                color: "oklch(0.82 0.15 195)",
+              }}
+              data-ocid="scanner.close_button"
             >
-              <button
-                type="button"
-                onClick={() => setShowScanner(false)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{
-                  background: "oklch(0.82 0.15 195 / 0.1)",
-                  border: "1px solid oklch(0.82 0.15 195 / 0.3)",
-                  color: "oklch(0.82 0.15 195)",
-                }}
-                data-ocid="scanner.close_button"
-              >
-                <X size={18} />
-              </button>
-              <span className="font-display font-bold gradient-text">
-                Scan to Receive
-              </span>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <ScannerTab onClose={() => setShowScanner(false)} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <X size={18} />
+            </button>
+            <span className="font-display font-bold gradient-text">
+              Scan to Receive
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <ScannerTab onClose={() => setShowScanner(false)} />
+          </div>
+        </div>
+      )}
 
       {/* Get App Dialog */}
       <GetAppDialog open={getAppOpen} onClose={() => setGetAppOpen(false)} />

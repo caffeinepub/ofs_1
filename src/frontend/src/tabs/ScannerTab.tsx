@@ -6,6 +6,7 @@ import {
   CameraOff,
   Check,
   FlipHorizontal,
+  Loader2,
   ScanLine,
   X,
 } from "lucide-react";
@@ -74,13 +75,13 @@ export function ScannerTab({ onClose: _onClose }: ScannerTabProps) {
   const [lastResult, setLastResult] = useState<string | null>(null);
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
+  // Start camera immediately when component mounts — no delay
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
-    // Small delay to ensure video element is in DOM before starting camera
-    const t = setTimeout(() => {
-      scanner.startScanning();
-    }, 50);
-    return () => clearTimeout(t);
+    scanner.startScanning();
+    return () => {
+      scanner.stopScanning();
+    };
   }, []);
 
   useEffect(() => {
@@ -132,56 +133,63 @@ export function ScannerTab({ onClose: _onClose }: ScannerTabProps) {
   useEffect(() => {
     return () => {
       if (progressRef.current) clearInterval(progressRef.current);
-      scanner.stopScanning();
     };
-  }, [scanner]);
+  }, []);
+
+  const isLoading = scanner.isLoading;
+  const hasError = !!scanner.error;
+  const cameraActive = scanner.isActive;
 
   return (
     <div className="flex flex-col h-full min-h-[60vh]">
-      {/* Camera view */}
-      <div className="relative flex-1 overflow-hidden bg-black">
-        {/* Always in DOM so ref attaches before camera starts */}
+      {/* Camera view area */}
+      <div
+        className="relative flex-1 overflow-hidden bg-black"
+        style={{ minHeight: 320 }}
+      >
+        {/* Video element always in DOM */}
         <video
           ref={scanner.videoRef}
           autoPlay
           playsInline
           muted
-          className={`w-full h-full object-cover ${
-            scanner.isScanning ? "block" : "hidden"
-          }`}
-          style={{ minHeight: 280 }}
+          className="w-full h-full object-cover"
+          style={{
+            display: cameraActive ? "block" : "none",
+            minHeight: 320,
+          }}
         />
-        {/* Hidden canvas for QR frame grabbing */}
+        {/* Hidden canvas for QR grabbing */}
         <canvas ref={scanner.canvasRef} className="hidden" />
 
-        {/* Overlay only when scanning */}
-        {scanner.isScanning && (
+        {/* Scanning overlay when active */}
+        {cameraActive && (
           <>
-            {/* Scan overlay */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div
                 className="w-56 h-56 rounded-2xl relative"
-                style={{ border: "2px solid oklch(0.82 0.15 195 / 0.8)" }}
+                style={{ border: "2px solid oklch(0.82 0.15 195 / 0.85)" }}
               >
+                {/* Animated scan line */}
                 <motion.div
-                  className="absolute left-0 right-0 h-0.5 rounded-full"
+                  className="absolute left-2 right-2 h-0.5 rounded-full"
                   style={{
                     background:
                       "linear-gradient(90deg, transparent, oklch(0.82 0.15 195), transparent)",
-                    top: "50%",
+                    boxShadow: "0 0 8px oklch(0.82 0.15 195 / 0.8)",
                   }}
-                  animate={{ top: ["10%", "90%", "10%"] }}
+                  animate={{ top: ["8%", "88%", "8%"] }}
                   transition={{
-                    duration: 2,
+                    duration: 2.2,
                     repeat: Number.POSITIVE_INFINITY,
                     ease: "easeInOut",
                   }}
                 />
-                {/* Corner decorations */}
+                {/* Corner markers */}
                 {(["tl", "tr", "bl", "br"] as const).map((corner) => (
                   <div
                     key={corner}
-                    className="absolute w-5 h-5"
+                    className="absolute w-6 h-6"
                     style={{
                       ...(corner === "tl"
                         ? { top: -2, left: -2 }
@@ -222,14 +230,14 @@ export function ScannerTab({ onClose: _onClose }: ScannerTabProps) {
               </div>
             </div>
 
-            {/* Camera controls */}
-            <div className="absolute top-4 right-4 flex flex-col gap-2">
+            {/* Flip camera button */}
+            <div className="absolute top-4 right-4">
               <button
                 type="button"
                 onClick={scanner.switchCamera}
                 className="w-10 h-10 rounded-xl flex items-center justify-center"
                 style={{
-                  background: "oklch(0.12 0.025 260 / 0.8)",
+                  background: "oklch(0.12 0.025 260 / 0.85)",
                   border: "1px solid oklch(0.3 0.05 260 / 0.5)",
                   color: "oklch(0.82 0.15 195)",
                 }}
@@ -239,61 +247,122 @@ export function ScannerTab({ onClose: _onClose }: ScannerTabProps) {
               </button>
             </div>
 
+            {/* Hint label */}
             <div className="absolute bottom-4 left-0 right-0 flex justify-center px-4">
               <p
-                className="text-xs font-semibold px-3 py-1.5 rounded-full"
+                className="text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5"
                 style={{
                   background: "oklch(0.12 0.025 260 / 0.85)",
                   color: "oklch(0.82 0.15 195)",
                   border: "1px solid oklch(0.82 0.15 195 / 0.3)",
                 }}
               >
-                <ScanLine size={12} className="inline mr-1" />
+                <ScanLine size={12} />
                 Point camera at sender's QR code
               </p>
             </div>
           </>
         )}
 
-        {/* Error / fallback states when NOT scanning */}
-        {!scanner.isScanning &&
-          (scanner.error ? (
+        {/* Loading state */}
+        {isLoading && !cameraActive && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+            style={{ background: "oklch(0.08 0.02 260)" }}
+          >
+            <Loader2
+              size={36}
+              style={{ color: "oklch(0.82 0.15 195)" }}
+              className="animate-spin"
+            />
+            <p className="text-sm text-muted-foreground">Starting camera...</p>
+          </div>
+        )}
+
+        {/* Error state */}
+        {hasError && !isLoading && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6"
+            style={{ background: "oklch(0.08 0.02 260)" }}
+          >
             <div
-              className="flex flex-col items-center justify-center h-full gap-3 p-6"
-              style={{ minHeight: 280 }}
+              className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{
+                background: "oklch(0.65 0.2 25 / 0.1)",
+                border: "1px solid oklch(0.65 0.2 25 / 0.3)",
+              }}
             >
-              <AlertCircle size={36} style={{ color: "oklch(0.65 0.2 25)" }} />
-              <p className="text-sm text-center text-muted-foreground">
-                {scanner.error?.message ?? String(scanner.error)}
+              <AlertCircle size={28} style={{ color: "oklch(0.65 0.2 25)" }} />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-semibold text-foreground">
+                Camera Error
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={scanner.startScanning}
-                data-ocid="scanner.retry.button"
-              >
-                <Camera size={14} className="mr-2" />
-                Retry
-              </Button>
+              <p className="text-xs text-muted-foreground">
+                {scanner.error?.message ?? "Could not access camera"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Make sure camera permission is allowed in your browser settings.
+              </p>
             </div>
-          ) : (
-            <div
-              className="flex flex-col items-center justify-center h-full gap-3 p-6"
-              style={{ minHeight: 280 }}
+            <Button
+              size="sm"
+              onClick={() => scanner.retry()}
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
+                color: "oklch(0.08 0.015 260)",
+              }}
+              data-ocid="scanner.retry.button"
             >
-              <CameraOff size={36} style={{ color: "oklch(0.5 0.04 260)" }} />
-              <p className="text-sm text-muted-foreground">Camera not active</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={scanner.startScanning}
-                data-ocid="scanner.start.button"
-              >
-                <Camera size={14} className="mr-2" />
-                Start Camera
-              </Button>
+              <Camera size={14} className="mr-2" />
+              Try Again
+            </Button>
+          </div>
+        )}
+
+        {/* Idle / not started state */}
+        {!cameraActive && !isLoading && !hasError && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6"
+            style={{ background: "oklch(0.08 0.02 260)" }}
+          >
+            <motion.div
+              className="w-20 h-20 rounded-2xl flex items-center justify-center"
+              style={{
+                background: "oklch(0.82 0.15 195 / 0.08)",
+                border: "1.5px solid oklch(0.82 0.15 195 / 0.3)",
+              }}
+              animate={{ scale: [1, 1.04, 1] }}
+              transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY }}
+            >
+              <CameraOff size={32} style={{ color: "oklch(0.82 0.15 195)" }} />
+            </motion.div>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-foreground">
+                Camera not started
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Tap the button below to activate
+              </p>
             </div>
-          ))}
+            <Button
+              size="lg"
+              onClick={() => scanner.startScanning()}
+              className="font-semibold rounded-2xl px-8"
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.82 0.15 195), oklch(0.65 0.2 295))",
+                color: "oklch(0.08 0.015 260)",
+                boxShadow: "0 4px 20px oklch(0.82 0.15 195 / 0.35)",
+              }}
+              data-ocid="scanner.start.button"
+            >
+              <Camera size={18} className="mr-2" />
+              Start Scanning
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Incoming transfer panel */}

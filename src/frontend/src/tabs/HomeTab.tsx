@@ -182,7 +182,7 @@ export function HomeTab({ onReceive }: HomeTabProps) {
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.22 }}
+        transition={{ delay: 0.2 }}
       >
         <div className="flex items-center gap-2 mb-3">
           <Brain size={14} style={{ color: "oklch(0.65 0.2 295)" }} />
@@ -197,7 +197,7 @@ export function HomeTab({ onReceive }: HomeTabProps) {
               className="glass rounded-2xl p-3 flex flex-col gap-2 relative overflow-hidden"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 + i * 0.07 }}
+              transition={{ delay: 0.23 + i * 0.07 }}
               style={{ border: `1px solid ${feat.color}33` }}
             >
               <div
